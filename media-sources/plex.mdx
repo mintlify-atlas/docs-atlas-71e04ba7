@@ -1,0 +1,464 @@
+---
+title: Plex Integration
+description: Connect ErsatzTV to your Plex Media Server
+---
+
+Integrate ErsatzTV with Plex to access your Plex libraries and include them in custom channels. ErsatzTV synchronizes metadata and playback information directly from your Plex server.
+
+## Overview
+
+The Plex integration allows ErsatzTV to:
+
+- Discover and sync Plex libraries
+- Access movies, TV shows, and other video content
+- Maintain synchronized metadata and artwork
+- Handle multiple Plex servers
+- Support path replacements for Docker/remote scenarios
+
+## Authentication
+
+### Pin-Based Authentication Flow
+
+ErsatzTV uses Plex's official OAuth pin flow for secure authentication:
+
+1. **Start Pin Flow**: Request an authentication pin from Plex
+2. **User Authorization**: User visits the Plex URL and authorizes ErsatzTV
+3. **Complete Flow**: ErsatzTV retrieves the authentication token
+4. **Server Discovery**: Available Plex servers are discovered and connected
+
+<CodeGroup>
+```csharp StartPlexPinFlowHandler.cs
+public Task<Either<BaseError, string>> Handle(
+    StartPlexPinFlow request,
+    CancellationToken cancellationToken) =>
+    _plexTvApiClient.StartPinFlow().Bind(result => result.Match(
+        Left: error => Task.FromResult(Left<BaseError, string>(error)),
+        Right: async pin =>
+        {
+            await _channel.WriteAsync(
+                new TryCompletePlexPinFlow(pin), 
+                cancellationToken
+            );
+            return Right<BaseError, string>(pin.Url);
+        })
+    );
+```
+</CodeGroup>
+
+### Authentication Process
+
+<Steps>
+  <Step title="Initiate Authentication">
+    Click "Connect to Plex" in the ErsatzTV settings
+  </Step>
+  
+  <Step title="Visit Plex URL">
+    Navigate to the provided URL (e.g., `https://app.plex.tv/auth#?clientID=...&code=...`)
+  </Step>
+  
+  <Step title="Authorize Access">
+    Log in to your Plex account and authorize ErsatzTV
+  </Step>
+  
+  <Step title="Complete Connection">
+    ErsatzTV automatically detects the authorization and connects to your servers
+  </Step>
+</Steps>
+
+### Token Storage
+
+Authentication tokens are stored securely:
+
+- **Plex Auth Token**: Main authentication token for Plex.tv API
+- **Server Auth Tokens**: Individual tokens for each Plex server
+- **Client Identifier**: Unique identifier linking ErsatzTV to Plex
+
+## Server Connection
+
+### Connection Parameters
+
+Each Plex server requires:
+
+- **Server URI**: The base URL to access the server
+- **Auth Token**: Authentication token for the server
+- **Client Identifier**: Machine identifier for the Plex server
+
+<CodeGroup>
+```csharp IPlexServerApiClient.cs
+public interface IPlexServerApiClient
+{
+    Task<bool> Ping(
+        PlexConnection connection,
+        PlexServerAuthToken token,
+        CancellationToken cancellationToken);
+
+    Task<Either<BaseError, List<PlexLibrary>>> GetLibraries(
+        PlexConnection connection,
+        PlexServerAuthToken token);
+
+    IAsyncEnumerable<Tuple<PlexMovie, int>> GetMovieLibraryContents(
+        PlexLibrary library,
+        PlexConnection connection,
+        PlexServerAuthToken token);
+
+    IAsyncEnumerable<Tuple<PlexShow, int>> GetShowLibraryContents(
+        PlexLibrary library,
+        PlexConnection connection,
+        PlexServerAuthToken token);
+}
+```
+</CodeGroup>
+
+### Connection Validation
+
+ErsatzTV validates connections by:
+
+1. **Ping Test**: Sends a ping to verify server accessibility
+2. **Machine Identifier Check**: Confirms the server identity matches
+3. **Library Access**: Tests ability to retrieve library list
+
+<CodeGroup>
+```csharp PlexServerApiClient.cs
+public async Task<bool> Ping(
+    PlexConnection connection,
+    PlexServerAuthToken token,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        IPlexServerApi service = XmlServiceFor(
+            connection.Uri, 
+            TimeSpan.FromSeconds(5)
+        );
+        PlexXmlMediaContainerPingResponse pingResult = 
+            await service.Ping(token.AuthToken, cancellationToken);
+        return token.ClientIdentifier == pingResult.MachineIdentifier;
+    }
+    catch (Exception)
+    {
+        return false;
+    }
+}
+```
+</CodeGroup>
+
+## Library Synchronization
+
+### Discovering Libraries
+
+ErsatzTV automatically discovers Plex libraries:
+
+- **Movie Libraries**: All movie-type libraries
+- **TV Libraries**: All show-type libraries
+- **Filtering**: Only movie and show libraries are synchronized
+
+<CodeGroup>
+```csharp PlexServerApiClient.cs
+public async Task<Either<BaseError, List<PlexLibrary>>> GetLibraries(
+    PlexConnection connection,
+    PlexServerAuthToken token)
+{
+    try
+    {
+        IPlexServerApi service = RestService.For<IPlexServerApi>(
+            new HttpClient
+            {
+                BaseAddress = new Uri(connection.Uri),
+                Timeout = TimeSpan.FromSeconds(10)
+            });
+        List<PlexLibraryResponse> directory =
+            await service.GetLibraries(token.AuthToken)
+                .Map(r => r.MediaContainer.Directory);
+        var response = directory
+            .Filter(l => l.Type.ToLowerInvariant() is "movie" or "show")
+            .Map(Project)
+            .Somes()
+            .ToList();
+        return response;
+    }
+    catch (Exception ex)
+    {
+        return BaseError.New(ex.ToString());
+    }
+}
+```
+</CodeGroup>
+
+### Synchronization Process
+
+The library synchronization handler manages library updates:
+
+1. **Fetch Current Libraries**: Retrieve all libraries from Plex
+2. **Compare with Existing**: Identify new, removed, and updated libraries
+3. **Update Database**: Add new libraries, remove deleted ones, update changed ones
+4. **Update Search Index**: Refresh search index for modified content
+
+<CodeGroup>
+```csharp SynchronizePlexLibrariesHandler.cs
+private async Task<Unit> SynchronizeLibraries(
+    ConnectionParameters connectionParameters,
+    CancellationToken cancellationToken)
+{
+    Either<BaseError, List<PlexLibrary>> maybeLibraries = 
+        await _plexServerApiClient.GetLibraries(
+            connectionParameters.ActiveConnection,
+            connectionParameters.PlexServerAuthToken);
+
+    foreach (List<PlexLibrary> libraries in maybeLibraries.RightToSeq())
+    {
+        var existing = connectionParameters.PlexMediaSource
+            .Libraries.OfType<PlexLibrary>().ToList();
+        var toAdd = libraries
+            .Filter(library => existing.All(l => l.Key != library.Key))
+            .ToList();
+        var toRemove = existing
+            .Filter(library => libraries.All(l => l.Key != library.Key))
+            .ToList();
+        var toUpdate = libraries
+            .Filter(l => toAdd.All(a => a.Key != l.Key) && 
+                        toRemove.All(r => r.Key != l.Key))
+            .ToList();
+        
+        List<int> ids = await _mediaSourceRepository.UpdateLibraries(
+            connectionParameters.PlexMediaSource.Id,
+            toAdd,
+            toRemove,
+            toUpdate,
+            cancellationToken);
+            
+        if (ids.Count != 0)
+        {
+            await _searchIndex.RemoveItems(ids);
+            _searchIndex.Commit();
+        }
+    }
+
+    return Unit.Default;
+}
+```
+</CodeGroup>
+
+### Content Synchronization
+
+For each library, ErsatzTV synchronizes:
+
+- **Movies**: Title, year, metadata, media files
+- **TV Shows**: Show details, seasons, episodes
+- **Collections**: Plex collections and their items
+- **Metadata**: Posters, backgrounds, ratings, descriptions
+
+### Pagination and Performance
+
+Content is retrieved using pagination to handle large libraries:
+
+- **Page Size**: Configurable items per request
+- **Skip/Take**: Offset-based pagination
+- **Streaming**: Uses `IAsyncEnumerable` for memory efficiency
+
+<CodeGroup>
+```csharp PlexServerApiClient.cs
+public IAsyncEnumerable<Tuple<PlexMovie, int>> GetMovieLibraryContents(
+    PlexLibrary library,
+    PlexConnection connection,
+    PlexServerAuthToken token)
+{
+    Task<PlexXmlMediaContainerStatsResponse> CountItems(
+        IPlexServerApi service)
+    {
+        return service.GetLibrarySection(library.Key, token.AuthToken);
+    }
+
+    Task<IEnumerable<PlexMovie>> GetItems(
+        IPlexServerApi _, 
+        IPlexServerApi jsonService, 
+        int skip, 
+        int pageSize)
+    {
+        return jsonService
+            .GetLibrarySectionContents(
+                library.Key, 
+                skip, 
+                pageSize, 
+                token.AuthToken)
+            .Map(r => r.MediaContainer.Metadata
+                .Filter(m => m.Media.Count > 0 && 
+                           m.Media.Any(media => media.Part.Count > 0)))
+            .Map(list => list.Map(metadata => 
+                ProjectToMovie(metadata, library.MediaSourceId)));
+    }
+
+    return GetPagedLibraryContents(connection, CountItems, GetItems);
+}
+```
+</CodeGroup>
+
+## Path Replacements
+
+Path replacements allow ErsatzTV to access Plex media files when paths differ between systems (e.g., Docker containers, remote servers).
+
+### Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Docker Environments" icon="docker">
+    Map container paths to host paths
+  </Card>
+  <Card title="Remote Servers" icon="network-wired">
+    Translate server paths to local mounts
+  </Card>
+  <Card title="Network Shares" icon="folder-open">
+    Convert UNC paths to local mount points
+  </Card>
+  <Card title="Multi-Platform" icon="desktop">
+    Handle Windows/Linux path differences
+  </Card>
+</CardGroup>
+
+### Configuring Path Replacements
+
+Define path mappings for each Plex media source:
+
+- **Plex Path**: The path as Plex sees it
+- **Local Path**: The equivalent path on the ErsatzTV system
+
+<CodeGroup>
+```csharp UpdatePlexPathReplacements.cs
+public record UpdatePlexPathReplacements(
+    int PlexMediaSourceId,
+    List<PlexPathReplacementItem> PathReplacements
+) : IRequest<Either<BaseError, Unit>>;
+
+public record PlexPathReplacementItem(
+    int Id, 
+    string PlexPath, 
+    string LocalPath
+);
+```
+</CodeGroup>
+
+### Example Mappings
+
+<CodeGroup>
+```yaml Docker Example
+# Plex Path: /data/movies
+# Local Path: /mnt/media/movies
+
+Plex Container:
+  volumes:
+    - /mnt/media/movies:/data/movies
+
+ErsatzTV:
+  path_replacements:
+    - plex_path: "/data/movies"
+      local_path: "/mnt/media/movies"
+```
+
+```yaml Windows to Linux
+# Plex Path: D:\\Media\\Movies
+# Local Path: /mnt/media/movies
+
+path_replacements:
+  - plex_path: "D:\\Media\\Movies"
+    local_path: "/mnt/media/movies"
+```
+
+```yaml Network Share
+# Plex Path: /volume1/Media
+# Local Path: /mnt/nas/Media
+
+path_replacements:
+  - plex_path: "/volume1/Media"
+    local_path: "/mnt/nas/Media"
+```
+</CodeGroup>
+
+## Collections and Tags
+
+ErsatzTV can synchronize Plex collections and tags:
+
+- **Collections**: Manually curated groups of content
+- **Tags**: Genre, director, actor, and custom tags
+- **Networks**: TV show network tags
+
+### Syncing Collections
+
+Collections are synchronized with all their items:
+
+<CodeGroup>
+```csharp IPlexServerApiClient.cs
+IAsyncEnumerable<Tuple<PlexCollection, int>> GetAllCollections(
+    PlexConnection connection,
+    PlexServerAuthToken token,
+    CancellationToken cancellationToken);
+
+IAsyncEnumerable<Tuple<MediaItem, int>> GetCollectionItems(
+    PlexConnection connection,
+    PlexServerAuthToken token,
+    string key,
+    CancellationToken cancellationToken);
+```
+</CodeGroup>
+
+## Library Preferences
+
+Customize how each Plex library is handled:
+
+- **Scan Preferences**: Enable/disable automatic scanning
+- **Metadata Preferences**: Choose metadata providers
+- **Update Schedule**: Configure refresh intervals
+
+## Troubleshooting
+
+### Connection Issues
+
+<AccordionGroup>
+  <Accordion title="Authentication Failed">
+    - Verify you completed the pin flow
+    - Check token hasn't expired
+    - Re-authenticate if necessary
+  </Accordion>
+  
+  <Accordion title="Server Not Found">
+    - Ensure Plex server is running
+    - Check network connectivity
+    - Verify firewall rules allow connection
+  </Accordion>
+  
+  <Accordion title="Library Sync Errors">
+    - Check Plex server logs
+    - Verify library permissions
+    - Ensure token has access to library
+  </Accordion>
+</AccordionGroup>
+
+### Playback Issues
+
+<AccordionGroup>
+  <Accordion title="File Not Found">
+    - Configure path replacements
+    - Verify media file accessibility
+    - Check file permissions
+  </Accordion>
+  
+  <Accordion title="Transcoding Errors">
+    - Verify FFmpeg installation
+    - Check available disk space
+    - Review transcoding settings
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Jellyfin Integration" icon="video" href="/media-sources/jellyfin">
+    Add Jellyfin as another media source
+  </Card>
+  <Card title="Local Libraries" icon="folder" href="/media-sources/local-libraries">
+    Supplement with local media files
+  </Card>
+  <Card title="Create Channels" icon="tv" href="/essentials/channels">
+    Build custom channels from Plex content
+  </Card>
+  <Card title="Collections" icon="layer-group" href="/essentials/collections">
+    Organize content into collections
+  </Card>
+</CardGroup>

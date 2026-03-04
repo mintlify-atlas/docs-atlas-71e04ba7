@@ -1,0 +1,391 @@
+---
+title: Graphics Engine
+description: Powerful graphics overlay system for dynamic overlays and visual elements
+icon: layer-group
+---
+
+The graphics engine provides a powerful system for adding dynamic visual elements to your streams. It supports multiple element types, scripting capabilities, and precise timing control.
+
+## Graphics Element Types
+
+ErsatzTV supports five types of graphics elements, defined in the `GraphicsElementKind` enum:
+
+### Image Elements
+
+Static or dynamic image overlays with positioning and opacity control.
+
+```yaml
+name: channel-logo
+image: /path/to/logo.png
+location: TopRight
+horizontal_margin_percent: 2
+vertical_margin_percent: 2
+opacity_percent: 80
+z_index: 10
+scale: true
+scale_width_percent: 15
+```
+
+**Properties:**
+- `image` - Path to the image file
+- `location` - Position on screen (see [Locations](#locations))
+- `opacity_percent` - Static opacity (0-100)
+- `opacity_expression` - Dynamic opacity using expressions
+- `horizontal_margin_percent` - Horizontal margin from edge
+- `vertical_margin_percent` - Vertical margin from edge
+- `location_x` / `location_y` - Absolute positioning
+- `z_index` - Layer order (higher appears on top)
+- `scale` - Enable scaling
+- `scale_width_percent` - Width as percentage of frame
+- `place_within_source_content` - Position within source content area
+
+### Text Elements
+
+Dynamic text overlays with rich styling, templates, and formatting.
+
+```yaml
+name: now-playing
+text: "[title]{{now.title}}[/title]\n[time]{{now.start | format_date_time: timezone 'h:mm tt'}}[/time]"
+location: BottomLeft
+width_percent: 40
+text_fit: Wrap
+text_align: Left
+base_style: base
+styles:
+  - name: base
+    font_size: 36
+    font_family: Arial
+    text_color: "#FFFFFF"
+    halo_color: "#000000"
+    halo_width: 2
+  - name: title
+    font_size: 42
+    font_weight: 700
+  - name: time
+    font_size: 28
+z_index: 5
+```
+
+**Properties:**
+- `text` - Text content with style markup and template variables
+- `location` - Position on screen
+- `width_percent` - Maximum width as percentage
+- `text_fit` - Fitting mode: `None`, `Wrap`, or `Scale`
+- `text_align` - Alignment: `Left`, `Center`, or `Right`
+- `styles` - Array of style definitions
+- `base_style` - Name of the base style to use
+- `include_fonts_from` - Path to additional font directory
+- `epg_entries` - Number of EPG entries to load for templates
+
+**Style Properties:**
+- `font_size` - Font size in points
+- `font_weight` - Font weight (100-900)
+- `font_italic` - Italic style (true/false)
+- `font_family` - Font family name
+- `text_color` - Text color (hex or named)
+- `letter_spacing` - Letter spacing
+- `line_height` - Line height multiplier
+- `halo_color` - Outline color
+- `halo_width` - Outline width
+- `halo_blur` - Outline blur amount
+
+**Text Markup:**
+Use BBCode-style tags to apply styles: `[style_name]text[/style_name]`
+
+### Motion Elements
+
+Video-based graphics elements for animated overlays.
+
+```yaml
+name: animated-bug
+video_path: /path/to/animation.mp4
+location: BottomRight
+start_seconds: 5
+end_behavior: Loop
+scale: true
+scale_width_percent: 20
+z_index: 15
+```
+
+**Properties:**
+- `video_path` - Path to video file
+- `start_seconds` - Start offset in the video
+- `end_behavior` - Behavior when video ends:
+  - `Disappear` - Element disappears
+  - `Loop` - Video loops from beginning
+  - `Hold` - Hold on last frame for `hold_seconds`
+- `hold_seconds` - Duration to hold (when using `Hold` behavior)
+- `location` - Position on screen
+- `scale` - Enable scaling
+- `scale_width_percent` - Width as percentage
+- `epg_entries` - Number of EPG entries for conditional display
+
+### Script Elements
+
+Custom script-generated graphics using external commands.
+
+```yaml
+name: custom-graphics
+command: /usr/bin/python3
+args:
+  - /scripts/generate_graphics.py
+  - "--channel={{channel.number}}"
+format: Raw
+pixel_format: bgra
+start_seconds: 0
+duration_seconds: 60
+z_index: 20
+```
+
+**Properties:**
+- `command` - Executable path
+- `args` - Command arguments (supports template variables)
+- `format` - Output format:
+  - `Raw` - Raw video frames
+  - `Packet` - Packetized data
+- `pixel_format` - Pixel format (default: bgra)
+- `start_seconds` - Delay before starting
+- `duration_seconds` - Total duration
+- `z_index` - Layer order
+- `epg_entries` - Number of EPG entries
+
+**Script Output:**
+Scripts should output raw BGRA frames matching the channel resolution and frame rate.
+
+### Subtitle Elements
+
+Embedded subtitle display with custom styling.
+
+```yaml
+name: subtitles
+template: "{{subtitle.text}}"
+z_index: 100
+epg_entries: 1
+```
+
+**Properties:**
+- `template` - Template for subtitle rendering
+- `z_index` - Layer order
+- `epg_entries` - Number of EPG entries
+
+## Graphics Engine Architecture
+
+The graphics engine processes elements in a rendering pipeline:
+
+### Rendering Pipeline
+
+1. **Initialization** (`InitializeAsync`)
+   - Load fonts and resources
+   - Parse opacity expressions
+   - Prepare static content
+   - Calculate positions
+
+2. **Frame Preparation** (`PrepareImage`)
+   - Evaluate opacity expressions
+   - Generate dynamic content
+   - Apply templates
+   - Return prepared bitmaps
+
+3. **Composition**
+   - Sort elements by `z_index`
+   - Composite layers using SkiaSharp
+   - Apply opacity and blend modes
+   - Output BGRA frame data
+
+### Frame Context Variables
+
+The engine provides timing variables for expressions and templates:
+
+- `content_seconds` - Seconds into current content
+- `content_total_seconds` - Total content duration
+- `channel_seconds` - Seconds since channel start
+- `time_of_day_seconds` - Seconds since midnight
+
+Reference: `GraphicsEngine.cs:112-128`
+
+## Opacity Expressions
+
+Dynamic opacity control using mathematical expressions with NCalc:
+
+```yaml
+opacity_expression: "LinearFadeDuration(content_seconds, 0, 2, 5)"
+```
+
+### Built-in Functions
+
+#### LinearFadePoints
+
+Linear fade with precise control points:
+
+```
+LinearFadePoints(time, start, peakStart, peakEnd, end)
+```
+
+- Fades from 0 to 1 between `start` and `peakStart`
+- Holds at 1 between `peakStart` and `peakEnd`
+- Fades from 1 to 0 between `peakEnd` and `end`
+
+**Example:**
+```yaml
+# Fade in for 2s, hold for 10s, fade out for 2s
+opacity_expression: "LinearFadePoints(content_seconds, 0, 2, 12, 14)"
+```
+
+#### LinearFadeDuration
+
+Linear fade with duration-based parameters:
+
+```
+LinearFadeDuration(time, start, fadeSeconds, peakSeconds)
+```
+
+- Fades in over `fadeSeconds`
+- Holds for `peakSeconds`
+- Fades out over `fadeSeconds`
+
+**Example:**
+```yaml
+# Fade in/out over 1s, hold for 8s
+opacity_expression: "LinearFadeDuration(content_seconds, 0, 1, 8)"
+```
+
+Reference: `OpacityExpressionHelper.cs:7-101`
+
+### Custom Expressions
+
+Build complex expressions using available variables:
+
+```yaml
+# Fade based on time of day (visible 6am-10pm)
+opacity_expression: "if(time_of_day_seconds >= 21600 && time_of_day_seconds <= 79200, 1.0, 0.0)"
+
+# Pulse effect every 10 seconds
+opacity_expression: "0.5 + 0.5 * Sin(content_seconds * 3.14159 / 10)"
+
+# Show during last 25% of content
+opacity_expression: "if(content_seconds / content_total_seconds > 0.75, 1.0, 0.0)"
+```
+
+## Template System
+
+Text and subtitle elements support Scriban templates with ErsatzTV template functions.
+
+### Template Variables
+
+Available variables depend on the context and `epg_entries` setting:
+
+- `now` - Current playing item
+- `next` - Next scheduled item
+- `channel` - Channel information
+- Custom variables from context
+
+### Template Functions
+
+#### format_date_time
+
+Format dates with timezone conversion:
+
+```
+{{ now.start | format_date_time: "America/New_York" "h:mm tt" }}
+```
+
+Reference: `TemplateFunctions.cs:23-36`
+
+#### convert_time_zone
+
+Convert between timezones:
+
+```
+{{ now.start | convert_time_zone: "America/Los_Angeles" }}
+```
+
+Reference: `TemplateFunctions.cs:9-21`
+
+## Locations
+
+Predefined positions for graphics elements:
+
+- `TopLeft`
+- `TopMiddle`
+- `TopRight`
+- `LeftMiddle`
+- `MiddleCenter`
+- `RightMiddle`
+- `BottomLeft`
+- `BottomMiddle`
+- `BottomRight`
+
+Reference: `WatermarkState.cs:25-36`
+
+## Z-Index Ordering
+
+Control layer order with `z_index`:
+
+- Lower values render first (bottom)
+- Higher values render last (top)
+- Elements with same z-index render in definition order
+- Typical ranges:
+  - Background elements: 0-10
+  - Standard overlays: 10-50
+  - Important overlays: 50-90
+  - Subtitles: 90-100
+
+Reference: `GraphicsEngine.cs:102-108`
+
+## Performance Considerations
+
+### Optimization Tips
+
+1. **Minimize Element Count**
+   - Combine static elements into single images when possible
+   - Use conditional display based on EPG entries
+
+2. **Efficient Opacity**
+   - Use static opacity when possible
+   - Avoid complex expressions with heavy calculations
+   - The engine skips composition when opacity is 0
+
+3. **Image Preparation**
+   - Pre-scale images to target size
+   - Use appropriate image formats (PNG for transparency)
+   - Avoid excessive resolution
+
+4. **Font Loading**
+   - Load custom fonts once during initialization
+   - Use `include_fonts_from` for shared font directories
+
+## YAML Configuration
+
+Graphics elements are defined in YAML files and loaded by channel:
+
+```yaml
+# graphics.yml
+elements:
+  - name: channel-logo
+    type: image
+    image: /config/logos/channel1.png
+    location: TopRight
+    opacity_percent: 90
+    z_index: 10
+    
+  - name: program-info
+    type: text
+    text: "Now: {{now.title}}"
+    location: BottomLeft
+    base_style: default
+    styles:
+      - name: default
+        font_size: 32
+        font_family: Arial
+    z_index: 5
+```
+
+Reference: `GraphicsElementLoader.cs`, `BaseGraphicsElement.cs:1-14`
+
+<Note>
+Graphics elements are rendered in real-time and require CPU resources. Test performance with your hardware before deploying complex overlays.
+</Note>
+
+<Warning>
+The graphics engine uses SkiaSharp for rendering. Ensure your system has sufficient CPU resources for the number and complexity of graphics elements.
+</Warning>

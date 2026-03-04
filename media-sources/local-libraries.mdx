@@ -1,0 +1,279 @@
+---
+title: Local Libraries
+description: Add and manage local media folders in ErsatzTV
+---
+
+Local libraries allow you to add media files stored on your filesystem to ErsatzTV. The application scans these folders to discover and catalog your media content.
+
+## Overview
+
+Local libraries are the primary way to add media files that are stored directly on the ErsatzTV server or accessible via network mounts. Each library is tied to a `LocalMediaSource` and can contain one or more filesystem paths.
+
+## Creating a Local Library
+
+To create a local library, you need to specify:
+
+- **Name**: A descriptive name for your library
+- **Media Kind**: The type of content (Movies, Shows, Music Videos, Other Videos, Songs, Images, or Remote Streams)
+- **Paths**: One or more filesystem paths to scan
+
+### Media Kinds
+
+ErsatzTV supports the following media kinds:
+
+<CodeGroup>
+```csharp LibraryMediaKind.cs
+public enum LibraryMediaKind
+{
+    Movies = 1,
+    Shows = 2,
+    MusicVideos = 3,
+    OtherVideos = 4,
+    Songs = 5,
+    Images = 6,
+    RemoteStreams = 7
+}
+```
+</CodeGroup>
+
+### Library Structure
+
+A local library contains:
+
+- **Library**: The container entity with name and media kind
+- **Library Paths**: One or more filesystem paths that will be scanned
+- **Media Items**: The actual media files discovered during scanning
+
+<CodeGroup>
+```csharp LibraryPath.cs
+public class LibraryPath
+{
+    public int Id { get; set; }
+    public string Path { get; set; }
+    public DateTime? LastScan { get; set; }
+
+    public int LibraryId { get; set; }
+    public Library Library { get; set; }
+
+    public List<MediaItem> MediaItems { get; set; }
+    public List<LibraryFolder> LibraryFolders { get; set; }
+}
+```
+</CodeGroup>
+
+## Scanning Process
+
+### Manual Scanning
+
+When you create a new library, ErsatzTV automatically triggers a scan if the library can be locked. The scanning process:
+
+1. **Library Lock**: Acquires a lock to prevent concurrent scans
+2. **File Discovery**: Walks the filesystem to find media files
+3. **Metadata Extraction**: Reads metadata from files and external sources
+4. **Database Update**: Stores media items and metadata in the database
+5. **Search Index**: Updates the search index for quick lookups
+
+<CodeGroup>
+```csharp CreateLocalLibraryHandler.cs
+private async Task<LocalLibraryViewModel> PersistLocalLibrary(
+    TvContext dbContext,
+    LocalLibrary localLibrary)
+{
+    await dbContext.LocalLibraries.AddAsync(localLibrary);
+    await dbContext.SaveChangesAsync();
+
+    if (_entityLocker.LockLibrary(localLibrary.Id))
+    {
+        await _scannerWorkerChannel.WriteAsync(
+            new ForceScanLocalLibrary(localLibrary.Id)
+        );
+    }
+
+    return ProjectToViewModel(localLibrary);
+}
+```
+</CodeGroup>
+
+### Automatic Scanning
+
+ErsatzTV can be configured to automatically rescan libraries at regular intervals:
+
+- Configure the refresh interval in Settings
+- Libraries are scanned for new, modified, or removed content
+- Only changed files are reprocessed to minimize scan time
+
+### Scan Types
+
+<CardGroup cols={2}>
+  <Card title="Force Scan" icon="arrows-rotate">
+    Rescans all content regardless of last scan time
+  </Card>
+  <Card title="If Needed Scan" icon="clock">
+    Only scans if the library hasn't been scanned recently
+  </Card>
+</CardGroup>
+
+## Supported File Formats
+
+ErsatzTV uses FFmpeg to process media files, supporting a wide range of formats:
+
+### Video Formats
+
+- MP4 (.mp4, .m4v)
+- MKV (.mkv)
+- AVI (.avi)
+- MOV (.mov)
+- WMV (.wmv)
+- FLV (.flv)
+- WebM (.webm)
+- MPEG (.mpg, .mpeg, .ts)
+
+### Audio Formats
+
+- MP3 (.mp3)
+- AAC (.aac, .m4a)
+- FLAC (.flac)
+- OGG (.ogg)
+- WAV (.wav)
+
+### Image Formats
+
+- JPEG (.jpg, .jpeg)
+- PNG (.png)
+- GIF (.gif)
+- BMP (.bmp)
+
+## File Organization
+
+### Movies
+
+Organize movie files in a flat structure or with subfolders:
+
+```
+/movies/
+  ├── Movie Title (2020).mkv
+  ├── Another Movie (2021)/
+  │   └── Another Movie (2021).mp4
+  └── Third Movie (2019).avi
+```
+
+### TV Shows
+
+Use a hierarchical structure for TV shows:
+
+```
+/tv-shows/
+  ├── Show Name/
+  │   ├── Season 01/
+  │   │   ├── Show Name - S01E01.mkv
+  │   │   ├── Show Name - S01E02.mkv
+  │   │   └── ...
+  │   ├── Season 02/
+  │   │   └── ...
+  │   └── ...
+  └── Another Show/
+      └── ...
+```
+
+## Managing Libraries
+
+### Updating Library Paths
+
+You can add, remove, or reorder paths within a library:
+
+- **Add Path**: Include additional folders in the scan
+- **Remove Path**: Stop scanning a specific folder
+- **Move Path**: Change the scan order priority
+
+### Deleting Libraries
+
+Deleting a library removes:
+
+- The library configuration
+- All associated library paths
+- Media items from the database (if not in other libraries)
+- Search index entries
+
+<Warning>
+Deleting a library does not delete the actual media files from your filesystem.
+</Warning>
+
+## Metadata Extraction
+
+During scanning, ErsatzTV extracts metadata from:
+
+1. **Filename parsing**: Extracts title, year, season/episode numbers
+2. **Embedded metadata**: Reads tags from media files
+3. **External files**: Loads NFO files, subtitles, and artwork
+4. **Online sources**: Fetches additional metadata (if configured)
+
+### Metadata Files
+
+Place metadata files alongside your media:
+
+```
+/movies/
+  ├── Movie Title (2020).mkv
+  ├── Movie Title (2020).nfo
+  ├── Movie Title (2020)-poster.jpg
+  └── Movie Title (2020)-fanart.jpg
+```
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Use fast storage">
+    Store libraries on SSDs or fast HDDs for better scan performance
+  </Accordion>
+  
+  <Accordion title="Minimize deep folder hierarchies">
+    Deeply nested folders take longer to scan
+  </Accordion>
+  
+  <Accordion title="Use appropriate scan intervals">
+    Don't scan more frequently than your content changes
+  </Accordion>
+  
+  <Accordion title="Organize content properly">
+    Well-organized folders scan faster and produce better metadata
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Library Not Scanning
+
+- Check that paths exist and are accessible
+- Verify filesystem permissions
+- Look for lock conflicts in logs
+- Ensure sufficient disk space
+
+### Missing Metadata
+
+- Verify filename follows naming conventions
+- Check for NFO files
+- Review metadata scraper configuration
+- Manually trigger library refresh
+
+### Duplicate Content
+
+- Remove overlapping paths from different libraries
+- Check for symbolic links or mounted folders
+- Review library path configuration
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plex Integration" icon="play" href="/media-sources/plex">
+    Connect to your Plex server
+  </Card>
+  <Card title="Jellyfin Integration" icon="video" href="/media-sources/jellyfin">
+    Sync with Jellyfin libraries
+  </Card>
+  <Card title="Emby Integration" icon="film" href="/media-sources/emby">
+    Import from Emby server
+  </Card>
+  <Card title="Channels" icon="tv" href="/essentials/channels">
+    Create channels from your libraries
+  </Card>
+</CardGroup>

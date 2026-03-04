@@ -1,0 +1,398 @@
+---
+title: Subtitles
+description: Configure subtitle display modes, extraction, and custom styling
+icon: closed-captioning
+---
+
+ErsatzTV provides flexible subtitle support with multiple display modes, automatic extraction, and customizable rendering.
+
+## Subtitle Modes
+
+Channels have configurable subtitle modes via the `ChannelSubtitleMode` enum:
+
+```csharp
+public enum ChannelSubtitleMode
+{
+    None = 0,
+    Forced = 1,
+    Default = 2,
+    Any = 3
+}
+```
+
+Reference: `ChannelSubtitleMode.cs:3-9`
+
+### None Mode
+
+Disables all subtitles:
+
+```yaml
+subtitle_mode: None
+```
+
+No subtitle streams are selected or displayed, regardless of media content.
+
+### Forced Mode
+
+Displays only forced subtitles:
+
+```yaml
+subtitle_mode: Forced
+```
+
+Forced subtitles typically show:
+- Foreign language dialogue in native language films
+- Important on-screen text
+- Signs and location captions
+
+The channel selects subtitle tracks with the "forced" flag set.
+
+### Default Mode
+
+Displays subtitles marked as default:
+
+```yaml
+subtitle_mode: Default
+```
+
+Selects subtitle streams flagged as "default" in the media container. Common for:
+- Primary subtitle track
+- Original language subtitles
+- SDH (Subtitles for the Deaf and Hard of Hearing)
+
+### Any Mode
+
+Displays the first available subtitle stream:
+
+```yaml
+subtitle_mode: Any
+```
+
+Selects any subtitle track found in the content, prioritizing by:
+1. Language preferences (if configured)
+2. Stream order in container
+3. Default/forced flags
+
+## Subtitle Types
+
+ErsatzTV handles different subtitle formats:
+
+### Embedded Subtitles
+
+Subtitles within video containers (MKV, MP4, etc.):
+
+- **Text-based** (SRT, SSA/ASS) - Requires extraction for most streaming modes
+- **Image-based** (PGS, VOBSUB) - Can be rendered directly
+
+Reference: `CustomStreamSelector.cs:209-218`
+
+### Sidecar Subtitles
+
+External subtitle files:
+
+- `.srt` - SubRip format
+- `.ass` / `.ssa` - Advanced SubStation Alpha
+- `.vtt` - WebVTT format
+
+External subtitles are automatically detected when named:
+- `movie.mp4` + `movie.srt`
+- `movie.mp4` + `movie.en.srt`
+- `movie.mp4` + `movie.en.forced.srt`
+
+### Extracted Subtitles
+
+Embedded text subtitles extracted to external files:
+
+```csharp
+if (subtitle.SubtitleKind is SubtitleKind.Embedded && 
+    !subtitle.IsImage && 
+    !subtitle.IsExtracted)
+{
+    // Requires extraction for non-HLS-Direct streaming
+}
+```
+
+Reference: `CustomStreamSelector.cs:209-213`
+
+ErsatzTV automatically extracts embedded text subtitles as needed based on streaming mode.
+
+## Subtitle Selection
+
+Subtitle selection depends on [stream selector mode](/advanced/stream-selectors):
+
+### Default Selection
+
+Automatic selection based on channel subtitle mode:
+
+```yaml
+stream_selector_mode: Default
+subtitle_mode: Default
+```
+
+Selects the first subtitle matching the configured mode.
+
+### Custom Selection
+
+Advanced subtitle selection with YAML configuration:
+
+```yaml
+stream_selector_mode: Custom
+stream_selector: custom-selector.yml
+```
+
+See [Stream Selectors](/advanced/stream-selectors) for detailed subtitle selection rules.
+
+## Subtitle Rendering
+
+Subtitles can be rendered as graphics overlays using subtitle graphics elements:
+
+### Subtitle Graphics Element
+
+```yaml
+name: subtitles
+type: subtitle
+template: "{{subtitle.text}}"
+z_index: 100
+epg_entries: 1
+```
+
+**Properties:**
+- `template` - Scriban template for subtitle text
+- `z_index` - Layer order (typically highest to appear on top)
+- `epg_entries` - Number of EPG entries to load
+
+Reference: `SubtitleGraphicsElement.cs:5-14`
+
+### Template Variables
+
+Available in subtitle templates:
+
+- `subtitle.text` - Subtitle text content
+- `subtitle.start` - Subtitle start timestamp
+- `subtitle.end` - Subtitle end timestamp
+- Additional context variables
+
+Reference: `SubtitleElement.cs` (TemplateFunctions integration)
+
+## Subtitle Language Selection
+
+Combine subtitle mode with language preferences:
+
+### Default Selector with Language
+
+The default selector respects subtitle mode while preferring configured languages.
+
+### Custom Selector with Language
+
+Advanced language-based selection:
+
+```yaml
+items:
+  - subtitle_language:
+      - eng
+      - en
+    audio_language:
+      - jpn
+      - ja
+      
+  - subtitle_language:
+      - "*"  # Any language
+    disable_subtitles: false
+```
+
+This configuration:
+1. Shows English subtitles when audio is Japanese
+2. Allows any subtitle language for other audio
+
+See [Stream Selectors](/advanced/stream-selectors#subtitle-selection) for complete syntax.
+
+## Subtitle Flags
+
+Subtitle streams carry metadata flags:
+
+### Forced Flag
+
+```csharp
+subtitle.Forced  // true/false
+```
+
+Indicates forced subtitles for foreign dialogue.
+
+### Default Flag
+
+```csharp
+subtitle.Default  // true/false
+```
+
+Indicates the default subtitle track.
+
+### SDH Flag
+
+```csharp
+subtitle.SDH  // true/false
+```
+
+Indicates Subtitles for the Deaf and Hard of Hearing (includes sound effects, speaker identification).
+
+Reference: `CustomStreamSelector.cs:285-302`
+
+## Streaming Mode Considerations
+
+### HLS Direct Mode
+
+Direct HTTP Live Streaming:
+
+```yaml
+streaming_mode: HttpLiveStreamingDirect
+```
+
+- Supports embedded and sidecar subtitles
+- Text subtitles can pass through without extraction
+- Image-based subtitles rendered client-side
+
+### Transcoding Modes
+
+When transcoding:
+
+```yaml
+streaming_mode: TranscodedHttpLiveStreaming
+```
+
+- Embedded text subtitles require extraction
+- Subtitles burned-in or passed as separate stream
+- Image-based subtitles converted as needed
+
+Reference: `CustomStreamSelector.cs:209-211`
+
+## Subtitle Configuration by Context
+
+### Channel-Level Configuration
+
+Set default subtitle mode for entire channel:
+
+```yaml
+channel:
+  number: "1"
+  subtitle_mode: Default
+```
+
+### Content-Level Override
+
+Use custom stream selectors to override per content type, time, or other criteria.
+
+## Common Configurations
+
+### English Subtitles Only
+
+Show English subtitles when available:
+
+**Channel Settings:**
+```yaml
+subtitle_mode: Default
+```
+
+**Stream Selector:**
+```yaml
+items:
+  - subtitle_language:
+      - eng
+      - en
+```
+
+### Foreign Audio Only
+
+Display subtitles only for non-English content:
+
+```yaml
+items:
+  - audio_language:
+      - eng
+      - en
+    disable_subtitles: true
+    
+  - audio_language:
+      - "*"
+    subtitle_language:
+      - eng
+      - en
+```
+
+### Forced Subtitles with SDH Option
+
+Prefer forced, fallback to SDH:
+
+```yaml
+items:
+  - subtitle_condition: "forced == true"
+    
+  - subtitle_condition: "sdh == true"
+    subtitle_language:
+      - eng
+      - en
+```
+
+### No Subtitles
+
+Disable all subtitles:
+
+**Channel Settings:**
+```yaml
+subtitle_mode: None
+```
+
+No additional configuration needed.
+
+## Subtitle Troubleshooting
+
+### Subtitles Not Appearing
+
+Check:
+1. **Subtitle mode** - Ensure not set to `None`
+2. **Stream selector** - Verify selector allows subtitles
+3. **Media files** - Confirm subtitles exist in content
+4. **Language match** - Check language preferences match content
+5. **Flags** - Verify forced/default flags match mode
+
+### Wrong Subtitle Language
+
+Adjust stream selector language preferences or use custom conditions.
+
+### Subtitle Timing Issues
+
+For external subtitles:
+- Ensure frame rate matches video
+- Check subtitle file encoding (UTF-8 recommended)
+- Verify timestamp format
+
+### Extraction Failures
+
+For embedded subtitles:
+- Check FFmpeg logs for extraction errors
+- Verify subtitle codec support
+- Ensure sufficient disk space for extraction
+
+## Performance Considerations
+
+### Extraction Overhead
+
+- First-time extraction adds startup delay
+- Extracted subtitles cached for subsequent plays
+- Plan storage for extracted subtitle files
+
+### Rendering Performance
+
+- Image-based subtitles (PGS, VOBSUB) more CPU-intensive
+- Text subtitles rendered efficiently
+- Subtitle graphics elements use graphics engine resources
+
+<Tip>
+Use `subtitle_mode: Default` for most use cases - it balances functionality with automatic selection.
+</Tip>
+
+<Note>
+Subtitle support varies by streaming mode. HttpLiveStreamingDirect provides the most flexible subtitle handling.
+</Note>
+
+<Warning>
+Embedded text subtitles in non-HLS-Direct modes require extraction. Ensure FFmpeg is properly configured.
+</Warning>

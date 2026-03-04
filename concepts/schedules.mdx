@@ -1,0 +1,264 @@
+---
+title: 'Schedules'
+description: 'Understanding schedule types and configuration in ErsatzTV'
+---
+
+## What is a schedule?
+
+A schedule (also called a `ProgramSchedule`) defines what content plays on a channel and when. Schedules contain one or more schedule items that reference collections, media items, or other content sources.
+
+## Schedule types
+
+ErsatzTV supports several different schedule types, each suited for different use cases:
+
+### Classic schedule
+
+The original and most flexible schedule type. Classic schedules contain a list of items that play in order, with support for:
+
+- Fixed start times for specific items
+- Dynamic scheduling between fixed items
+- Multiple playout modes per item
+- Pre-roll, mid-roll, and post-roll filler content
+- Watermarks and graphics overlays per item
+
+<Tip>
+Classic schedules are ideal for most use cases and provide the greatest flexibility in scheduling content.
+</Tip>
+
+### Block schedule
+
+Block schedules divide the day into time blocks, each containing content that plays during that period. Features include:
+
+- Time-based programming blocks (e.g., morning block, afternoon block)
+- Duration-based blocks (e.g., 60-minute blocks)
+- Automatic content cycling within blocks
+- Stop scheduling behavior per block
+
+Block schedules are perfect for creating dayparted channels with different content at different times of day.
+
+### Sequential schedule
+
+Sequential schedules play content items one after another in a predetermined sequence. This schedule type is designed for:
+
+- Simple linear playlists
+- Binge-watching series in order
+- Curated content marathons
+
+Sequential schedules are the simplest schedule type with minimal configuration.
+
+### Scripted schedule
+
+Scripted schedules use external files to define the playout schedule. This allows for:
+
+- Complex scheduling logic
+- External schedule generation
+- Integration with third-party tools
+- Dynamic schedule updates
+
+Scripted schedules reference a `ScheduleFile` path containing the schedule definition.
+
+### External JSON schedule
+
+External JSON schedules load playout data from JSON files, enabling:
+
+- Pre-built schedules from external systems
+- Batch schedule imports
+- Schedule archiving and version control
+
+## Schedule properties
+
+All schedule types share these common properties:
+
+- **Name** - A descriptive name for the schedule
+- **Items** - The list of schedule items (for Classic schedules)
+- **Playouts** - Channels that use this schedule
+
+### Behavioral flags
+
+- **KeepMultiPartEpisodesTogether** - When enabled, multi-part episodes are scheduled as a single unit
+- **TreatCollectionsAsShows** - Treat collection items as if they belong to the same TV show
+- **ShuffleScheduleItems** - Randomize the order of schedule items
+- **RandomStartPoint** - Start at a random position in the schedule rather than the beginning
+
+### Fixed start time behavior
+
+The `FixedStartTimeBehavior` property controls how fixed start times are handled:
+
+- **Strict** - Fixed items must start at their exact scheduled time
+- **Flexible** - Fixed items can shift slightly to accommodate preceding content
+
+<Warning>
+Strict fixed start time behavior may cause content to be skipped if previous items run long.
+</Warning>
+
+## Schedule items
+
+Schedule items are the building blocks of Classic schedules. Each item references content and defines how it should be played.
+
+### Item types
+
+Schedule items come in four varieties based on their playout mode:
+
+#### One mode
+
+Play exactly one item from the collection.
+
+```csharp
+ProgramScheduleItemOne
+```
+
+#### Multiple mode
+
+Play a variable number of items from the collection. The count can be:
+
+- **Count** - A static integer count
+- **CollectionSize** - The current size of the collection
+- **PlaylistItemSize** - The size of a playlist item
+- **MultiEpisodeGroupSize** - From one item to all linked multi-part episodes
+
+```csharp
+ProgramScheduleItemMultiple
+  MultipleMode = Count
+  Count = "5"  // Play 5 items
+```
+
+#### Flood mode
+
+Play items one after another until a fixed start item is encountered.
+
+```csharp
+ProgramScheduleItemFlood
+```
+
+<Info>
+Flood mode is useful for filling time blocks with content until a specific show needs to start.
+</Info>
+
+#### Duration mode
+
+Play as many items as will fit within the specified duration.
+
+```csharp
+ProgramScheduleItemDuration
+  PlayoutDuration = TimeSpan.FromHours(1)  // Play 1 hour of content
+  TailMode = Filler  // What to do if items don't fill duration
+  DiscardToFillAttempts = 3  // Try discarding items to fit exactly
+```
+
+The `TailMode` property controls what happens when items don't perfectly fill the duration:
+
+- **None** - End early, no padding
+- **Offline** - Show offline slate
+- **Slate** - Show a custom slate
+- **Filler** - Use filler content
+
+### Start times
+
+Schedule items can have fixed or dynamic start times:
+
+- **Dynamic** - Item plays immediately after the previous item
+- **Fixed** - Item must play at a specific time of day
+
+```csharp
+StartTime = TimeSpan.FromHours(20)  // Start at 8:00 PM
+FixedStartTimeBehavior = Strict
+```
+
+### Content sources
+
+Schedule items can reference multiple types of content:
+
+- **CollectionId** - A standard collection
+- **MediaItemId** - A single media item
+- **MultiCollectionId** - A multi-collection
+- **SmartCollectionId** - A smart collection
+- **PlaylistId** - A playlist
+- **SearchQuery** - Dynamic search results
+- **RerunCollectionId** - First-run/rerun collection
+
+The `CollectionType` enum identifies which content source is being used.
+
+### Playback order
+
+The `PlaybackOrder` property controls how items from the collection are selected:
+
+- **Chronological** - Play in chronological/release order
+- **Random** - Random selection with no memory
+- **Shuffle** - Randomized order, play all before repeating
+- **ShuffleInOrder** - Shuffle, but keep shows together
+- **MultiEpisodeShuffle** - Shuffle with multi-episode grouping
+- **SeasonEpisode** - Strict season and episode order
+- **RandomRotation** - Rotate through items randomly
+- **Marathon** - Special marathon mode with grouping options
+
+### Marathon options
+
+When using `Marathon` playback order, additional options are available:
+
+- **MarathonGroupBy** - How to group items (show, season, etc.)
+- **MarathonShuffleGroups** - Shuffle the groups
+- **MarathonShuffleItems** - Shuffle items within groups
+- **MarathonBatchSize** - Number of items per batch
+
+### Guide mode
+
+The `GuideMode` property controls how items appear in the EPG:
+
+- **Normal** - Show with full metadata
+- **Filler** - Mark as filler content in the guide
+
+### Custom titles
+
+Set a custom title for the EPG entry:
+
+```csharp
+CustomTitle = "Special Presentation"
+```
+
+## Filler content
+
+Schedule items can include various types of filler content:
+
+- **PreRollFillerId** - Filler before the content (e.g., commercials)
+- **MidRollFillerId** - Filler during the content (e.g., mid-show commercials)
+- **PostRollFillerId** - Filler after the content (e.g., credits and promos)
+- **TailFillerId** - Filler to pad out remaining time
+- **FallbackFillerId** - Filler when content is unavailable
+
+See [Filler Content](/advanced/filler-content) for detailed configuration.
+
+## Watermarks and graphics
+
+Schedule items can override channel-level watermarks and graphics:
+
+- **Watermarks** - List of watermark references
+- **GraphicsElements** - List of graphics element references
+
+These are applied to all content played by the schedule item.
+
+## Audio and subtitle preferences
+
+Schedule items can override channel-level audio and subtitle preferences:
+
+- **PreferredAudioLanguageCode** - Preferred audio language
+- **PreferredAudioTitle** - Preferred audio track title
+- **PreferredSubtitleLanguageCode** - Preferred subtitle language
+- **SubtitleMode** - Subtitle rendering mode
+
+## Alternate schedules
+
+Schedules can have alternate versions that are activated based on conditions:
+
+- **ProgramScheduleAlternates** - List of alternate schedule configurations
+
+Alternates allow for special programming on holidays, weekends, or other conditions.
+
+## Relationship to playouts
+
+Schedules are referenced by playouts, which are associated with channels. The relationship is:
+
+```
+Channel → Playout → Schedule → Schedule Items → Collections → Media Items
+```
+
+See [Playouts](/concepts/playouts) for how schedules are transformed into actual playout items.

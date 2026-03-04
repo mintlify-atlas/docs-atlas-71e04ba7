@@ -1,0 +1,587 @@
+---
+title: 'FFmpeg Profiles'
+description: 'Manage transcoding profiles for channels'
+---
+
+## Overview
+
+FFmpeg profiles define transcoding settings for channel streams, including video/audio codecs, bitrates, resolution, hardware acceleration, and more. Each channel is assigned an FFmpeg profile that controls how media is processed for streaming.
+
+## Get All FFmpeg Profiles
+
+Retrieve a list of all FFmpeg profiles.
+
+```bash
+GET /api/ffmpeg/profiles
+```
+
+### Response
+
+<ResponseField name="profiles" type="array">
+  Array of FFmpeg profile objects
+</ResponseField>
+
+<Expandable title="FFmpeg Profile Properties">
+  <ResponseField name="id" type="integer" required>
+    Unique profile identifier
+  </ResponseField>
+  
+  <ResponseField name="name" type="string" required>
+    Profile display name
+  </ResponseField>
+  
+  <ResponseField name="threadCount" type="integer" required>
+    Number of encoding threads (0 for auto)
+  </ResponseField>
+  
+  <ResponseField name="hardwareAcceleration" type="string" required>
+    Hardware acceleration type:
+    - `None` - Software encoding
+    - `Qsv` - Intel Quick Sync Video
+    - `Nvenc` - NVIDIA NVENC
+    - `Vaapi` - VA-API (Intel/AMD)
+    - `VideoToolbox` - Apple VideoToolbox
+    - `Amf` - AMD AMF
+    - `V4l2m2m` - Video4Linux2
+    - `Rkmpp` - Rockchip MPP
+  </ResponseField>
+  
+  <ResponseField name="resolution" type="string" required>
+    Target resolution name (e.g., "1920x1080", "1280x720")
+  </ResponseField>
+  
+  <ResponseField name="scalingBehavior" type="string" required>
+    How to handle aspect ratio:
+    - `ScaleAndPad` - Scale and add letterboxing
+    - `Stretch` - Stretch to fill
+    - `Crop` - Crop to fill
+  </ResponseField>
+  
+  <ResponseField name="videoFormat" type="string" required>
+    Video codec:
+    - `None` - No video
+    - `H264` - H.264/AVC
+    - `Hevc` - H.265/HEVC
+    - `Mpeg2Video` - MPEG-2
+    - `Av1` - AV1
+    - `Copy` - Copy without transcoding
+  </ResponseField>
+  
+  <ResponseField name="videoProfile" type="string" required>
+    Codec profile (e.g., "main", "high")
+  </ResponseField>
+  
+  <ResponseField name="videoPreset" type="string" required>
+    Encoding preset (e.g., "medium", "fast", "slow")
+  </ResponseField>
+  
+  <ResponseField name="allowBFrames" type="boolean" required>
+    Whether to allow B-frames in encoding
+  </ResponseField>
+  
+  <ResponseField name="bitDepth" type="string" required>
+    Color bit depth:
+    - `EightBit` - 8-bit color
+    - `TenBit` - 10-bit color
+  </ResponseField>
+  
+  <ResponseField name="videoBitrate" type="integer" required>
+    Target video bitrate in kbps
+  </ResponseField>
+  
+  <ResponseField name="videoBufferSize" type="integer" required>
+    Video buffer size in kbps
+  </ResponseField>
+  
+  <ResponseField name="tonemapAlgorithm" type="string" required>
+    HDR to SDR tone mapping:
+    - `Linear`
+    - `Clip`
+    - `Gamma`
+    - `Reinhard`
+    - `Mobius`
+    - `Hable`
+  </ResponseField>
+  
+  <ResponseField name="audioFormat" type="string" required>
+    Audio codec:
+    - `None` - No audio
+    - `Aac` - AAC
+    - `Ac3` - Dolby Digital (AC-3)
+    - `AacLatm` - AAC LATM
+    - `Copy` - Copy without transcoding
+  </ResponseField>
+  
+  <ResponseField name="audioBitrate" type="integer" required>
+    Target audio bitrate in kbps
+  </ResponseField>
+  
+  <ResponseField name="audioBufferSize" type="integer" required>
+    Audio buffer size in kbps
+  </ResponseField>
+  
+  <ResponseField name="normalizeLoudnessMode" type="string" required>
+    Audio loudness normalization:
+    - `Off` - No normalization
+    - `LoudNorm` - EBU R128 loudness normalization
+  </ResponseField>
+  
+  <ResponseField name="audioChannels" type="integer" required>
+    Number of audio channels (e.g., 2 for stereo, 6 for 5.1)
+  </ResponseField>
+  
+  <ResponseField name="audioSampleRate" type="integer" required>
+    Audio sample rate in Hz (e.g., 48000)
+  </ResponseField>
+  
+  <ResponseField name="normalizeFramerate" type="boolean" required>
+    Whether to normalize framerate to profile target
+  </ResponseField>
+  
+  <ResponseField name="deinterlaceVideo" type="boolean">
+    Whether to deinterlace interlaced video
+  </ResponseField>
+  
+  <ResponseField name="vaapiDisplay" type="string">
+    VA-API display (e.g., "/dev/dri/renderD128")
+  </ResponseField>
+  
+  <ResponseField name="vaapiDriver" type="string">
+    VA-API driver:
+    - `Default`
+    - `iHD` - Intel iHD driver
+    - `i965` - Intel i965 driver
+    - `RadeonSI` - AMD RadeonSI
+    - `Nouveau` - NVIDIA Nouveau
+  </ResponseField>
+  
+  <ResponseField name="vaapiDevice" type="string">
+    VA-API device path
+  </ResponseField>
+  
+  <ResponseField name="qsvExtraHardwareFrames" type="integer">
+    Extra hardware frames for QSV
+  </ResponseField>
+</Expandable>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/api/ffmpeg/profiles
+```
+
+### Example Response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Default",
+    "threadCount": 0,
+    "hardwareAcceleration": "None",
+    "vaapiDisplay": null,
+    "vaapiDriver": "Default",
+    "vaapiDevice": null,
+    "qsvExtraHardwareFrames": null,
+    "resolution": "1920x1080",
+    "scalingBehavior": "ScaleAndPad",
+    "videoFormat": "H264",
+    "videoProfile": "high",
+    "videoPreset": "medium",
+    "allowBFrames": true,
+    "bitDepth": "EightBit",
+    "videoBitrate": 10000,
+    "videoBufferSize": 20000,
+    "tonemapAlgorithm": "Hable",
+    "audioFormat": "Aac",
+    "audioBitrate": 192,
+    "audioBufferSize": 384,
+    "normalizeLoudnessMode": "Off",
+    "audioChannels": 2,
+    "audioSampleRate": 48000,
+    "normalizeFramerate": true,
+    "deinterlaceVideo": true
+  }
+]
+```
+
+## Create FFmpeg Profile
+
+Create a new FFmpeg profile with transcoding settings.
+
+```bash
+POST /api/ffmpeg/profiles/new
+```
+
+### Request Body
+
+All fields from the FFmpeg profile object are required except hardware-specific fields.
+
+<Note>
+  Hardware acceleration fields (`vaapiDisplay`, `vaapiDriver`, `vaapiDevice`, `qsvExtraHardwareFrames`) are only required when using the corresponding `hardwareAcceleration` type.
+</Note>
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:8409/api/ffmpeg/profiles/new \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "HD Quality",
+    "threadCount": 4,
+    "hardwareAcceleration": "None",
+    "vaapiDisplay": null,
+    "vaapiDriver": "Default",
+    "vaapiDevice": null,
+    "qsvExtraHardwareFrames": null,
+    "resolutionId": 2,
+    "scalingBehavior": "ScaleAndPad",
+    "videoFormat": "H264",
+    "videoProfile": "high",
+    "videoPreset": "medium",
+    "allowBFrames": true,
+    "bitDepth": "EightBit",
+    "videoBitrate": 5000,
+    "videoBufferSize": 10000,
+    "tonemapAlgorithm": "Hable",
+    "audioFormat": "Aac",
+    "audioBitrate": 192,
+    "audioBufferSize": 384,
+    "normalizeLoudnessMode": "Off",
+    "audioChannels": 2,
+    "audioSampleRate": 48000,
+    "normalizeFramerate": true,
+    "deinterlaceVideo": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 5
+}
+```
+
+## Update FFmpeg Profile
+
+Update an existing FFmpeg profile.
+
+```bash
+PUT /api/ffmpeg/profiles/update
+```
+
+### Request Body
+
+Same as create, but must include the profile `fFmpegProfileId`:
+
+<ParamField body="fFmpegProfileId" type="integer" required>
+  ID of the profile to update
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X PUT http://localhost:8409/api/ffmpeg/profiles/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fFmpegProfileId": 5,
+    "name": "HD Quality Updated",
+    "threadCount": 6,
+    "videoBitrate": 6000,
+    ...
+  }'
+```
+
+## Delete FFmpeg Profile
+
+Delete an FFmpeg profile.
+
+```bash
+DELETE /api/ffmpeg/delete/{id}
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  ID of the profile to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="integer">
+  - `200 OK` - Profile deleted successfully
+  - `409 Conflict` - Profile is in use by a channel
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X DELETE http://localhost:8409/api/ffmpeg/delete/5
+```
+
+<Warning>
+  Profiles assigned to channels cannot be deleted. Assign channels to a different profile first.
+</Warning>
+
+## Get Resolution by Name
+
+Retrieve resolution details by name for use in profile creation.
+
+```bash
+GET /api/ffmpeg/resolution/by-name/{name}
+```
+
+### Path Parameters
+
+<ParamField path="name" type="string" required>
+  Resolution name (e.g., "1920x1080", "1280x720")
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="integer">
+  Resolution ID for use in profile creation
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Resolution name
+</ResponseField>
+
+<ResponseField name="width" type="integer">
+  Horizontal resolution in pixels
+</ResponseField>
+
+<ResponseField name="height" type="integer">
+  Vertical resolution in pixels
+</ResponseField>
+
+<ResponseField name="isCustom" type="boolean">
+  Whether this is a custom resolution
+</ResponseField>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/api/ffmpeg/resolution/by-name/1920x1080
+```
+
+### Example Response
+
+```json
+{
+  "id": 2,
+  "name": "1920x1080",
+  "width": 1920,
+  "height": 1080,
+  "isCustom": false
+}
+```
+
+## Hardware Acceleration
+
+ErsatzTV supports multiple hardware acceleration platforms:
+
+<CardGroup cols={2}>
+  <Card title="Intel QSV" icon="microchip">
+    Quick Sync Video for Intel CPUs with integrated graphics
+  </Card>
+  
+  <Card title="NVIDIA NVENC" icon="server">
+    Hardware encoding on NVIDIA GPUs
+  </Card>
+  
+  <Card title="VA-API" icon="display">
+    Video Acceleration API for Intel and AMD GPUs
+  </Card>
+  
+  <Card title="Apple VideoToolbox" icon="apple">
+    Hardware acceleration on macOS and iOS
+  </Card>
+  
+  <Card title="AMD AMF" icon="amd">
+    Advanced Media Framework for AMD GPUs
+  </Card>
+  
+  <Card title="Video4Linux2" icon="linux">
+    Hardware encoding on embedded Linux devices
+  </Card>
+</CardGroup>
+
+### Hardware Acceleration Setup
+
+<Info>
+  Hardware acceleration requires proper drivers and device access. See [Hardware Acceleration Guide](/streaming/hardware-acceleration) for setup instructions.
+</Info>
+
+### VA-API Configuration
+
+For VA-API acceleration:
+
+- **Display**: `/dev/dri/renderD128` (or your device path)
+- **Driver**: Select based on your GPU
+  - `iHD` - Modern Intel GPUs
+  - `i965` - Older Intel GPUs
+  - `RadeonSI` - AMD GPUs
+- **Device**: Usually same as display
+
+### QSV Configuration
+
+- Set `qsvExtraHardwareFrames` to 64 or higher for complex content
+- Requires Intel CPU with integrated graphics
+- Best performance with recent Intel generations
+
+## Video Codecs
+
+### H.264 (AVC)
+
+- Most compatible codec
+- Wide device support
+- Profiles: `baseline`, `main`, `high`
+- Recommended for general use
+
+### H.265 (HEVC)
+
+- Better compression than H.264
+- Lower bitrate for same quality
+- Requires newer devices/players
+- Profiles: `main`, `main10`
+
+### MPEG-2
+
+- Legacy codec for compatibility
+- Larger file sizes
+- Universal support
+- Use for older devices
+
+### AV1
+
+- Next-generation codec
+- Best compression efficiency
+- Limited hardware support
+- CPU-intensive encoding
+
+### Copy Mode
+
+- No transcoding
+- Source stream copied directly
+- Fastest, lowest CPU usage
+- Requires compatible source
+
+## Audio Codecs
+
+### AAC
+
+- Standard for modern streaming
+- Good quality at low bitrates
+- Wide device support
+- Recommended: 192 kbps for stereo
+
+### AC-3 (Dolby Digital)
+
+- Supports multichannel audio
+- Compatible with most devices
+- Higher bitrates than AAC
+- Recommended: 384 kbps for 5.1
+
+### AAC LATM
+
+- AAC variant for MPEG-TS streams
+- Use for IPTV/broadcast applications
+
+### Copy Mode
+
+- No audio transcoding
+- Preserves original audio
+- Requires compatible source and client
+
+## Bitrate Guidelines
+
+### Video Bitrates
+
+| Resolution | H.264 | H.265 | Use Case |
+|------------|-------|-------|----------|
+| 1920x1080 | 8-12 Mbps | 6-9 Mbps | Full HD |
+| 1280x720 | 4-6 Mbps | 3-5 Mbps | HD |
+| 854x480 | 2-3 Mbps | 1.5-2.5 Mbps | SD |
+| 640x480 | 1-2 Mbps | 0.8-1.5 Mbps | Low quality |
+
+### Audio Bitrates
+
+| Configuration | Bitrate | Use Case |
+|---------------|---------|----------|
+| Stereo (2.0) | 128-192 kbps | Standard quality |
+| Stereo (2.0) | 256 kbps | High quality |
+| 5.1 Surround | 384-448 kbps | Home theater |
+| Mono | 64-96 kbps | Voice/podcast |
+
+<Note>
+  Buffer size should typically be 2x the target bitrate for smooth streaming.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Test Profiles" icon="vial">
+    Test new profiles with sample content before production use
+  </Card>
+  
+  <Card title="Match Source" icon="shuffle">
+    Target resolution and bitrate appropriate for your source content
+  </Card>
+  
+  <Card title="Hardware First" icon="rocket">
+    Use hardware acceleration when available for better performance
+  </Card>
+  
+  <Card title="Profile Per Use" icon="layer-group">
+    Create different profiles for different quality tiers or device types
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Transcoding Errors
+
+If streams fail to start:
+
+1. Check FFmpeg logs for errors
+2. Verify hardware acceleration is properly configured
+3. Test with software encoding (`hardwareAcceleration: "None"`)
+4. Ensure FFmpeg has required codecs
+
+### Poor Quality
+
+If stream quality is poor:
+
+1. Increase `videoBitrate` and `videoBufferSize`
+2. Use a slower `videoPreset` (e.g., "slow" instead of "fast")
+3. Consider higher resolution
+4. Check source quality
+
+### High CPU Usage
+
+If CPU usage is too high:
+
+1. Enable hardware acceleration
+2. Reduce resolution or bitrate
+3. Use faster `videoPreset`
+4. Increase `threadCount`
+5. Consider using H.264 instead of H.265/AV1
+
+## Related Endpoints
+
+- [Channels API](/api/channels) - Assign profiles to channels
+- [Sessions API](#) - Monitor active transcoding sessions
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Hardware Acceleration" icon="microchip" href="/streaming/hardware-acceleration">
+    Configure GPU-accelerated transcoding
+  </Card>
+  
+  <Card title="Transcoding Guide" icon="gears" href="/streaming/transcoding">
+    Learn about transcoding concepts and optimization
+  </Card>
+</CardGroup>

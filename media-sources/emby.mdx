@@ -1,0 +1,624 @@
+---
+title: Emby Integration
+description: Connect ErsatzTV to your Emby Media Server
+---
+
+Integrate ErsatzTV with Emby to access your Emby libraries and include them in custom channels. ErsatzTV synchronizes metadata and media information directly from your Emby server.
+
+## Overview
+
+The Emby integration enables ErsatzTV to:
+
+- Connect to Emby servers using API keys
+- Synchronize movie and TV show libraries
+- Access metadata, artwork, and playback information
+- Support path replacements for different environments
+- Handle multiple Emby servers simultaneously
+
+## Authentication
+
+### API Key Authentication
+
+Emby uses API key-based authentication for third-party applications:
+
+1. **Generate API Key**: Create an API key in the Emby dashboard
+2. **Configure Connection**: Provide server address and API key to ErsatzTV
+3. **Validate Server**: ErsatzTV verifies the connection and retrieves server details
+4. **Synchronize Libraries**: Available libraries are discovered automatically
+
+<CodeGroup>
+```csharp SaveEmbySecretsHandler.cs
+public Task<Either<BaseError, Unit>> Handle(
+    SaveEmbySecrets request, 
+    CancellationToken cancellationToken) =>
+    Validate(request)
+        .MapT(PerformSave)
+        .Bind(v => v.ToEitherAsync());
+
+private async Task<Validation<BaseError, Parameters>> Validate(
+    SaveEmbySecrets request)
+{
+    Either<BaseError, EmbyServerInformation> maybeServerInformation = 
+        await _embyApiClient.GetServerInformation(
+            request.Secrets.Address, 
+            request.Secrets.ApiKey
+        );
+
+    return maybeServerInformation.Match(
+        info => Validation<BaseError, Parameters>.Success(
+            new Parameters(request.Secrets, info)
+        ),
+        error => error
+    );
+}
+
+private async Task<Unit> PerformSave(Parameters parameters)
+{
+    await _embySecretStore.SaveSecrets(parameters.Secrets);
+    await _mediaSourceRepository.UpsertEmby(
+        parameters.Secrets.Address,
+        parameters.ServerInformation.ServerName,
+        parameters.ServerInformation.OperatingSystem
+    );
+    _memoryCache.Remove(new GetEmbyConnectionParameters());
+    await _channel.WriteAsync(new SynchronizeEmbyMediaSources());
+
+    return Unit.Default;
+}
+```
+</CodeGroup>
+
+### Creating an API Key in Emby
+
+<Steps>
+  <Step title="Access Emby Dashboard">
+    Log in as an administrator and open the server dashboard
+  </Step>
+  
+  <Step title="Navigate to API Keys">
+    Go to Advanced → Security → API Keys
+  </Step>
+  
+  <Step title="Generate New Key">
+    Click "New API Key" to create a key for ErsatzTV
+  </Step>
+  
+  <Step title="Name the Application">
+    Enter "ErsatzTV" or a descriptive identifier
+  </Step>
+  
+  <Step title="Save and Copy">
+    Save the key and copy it for use in ErsatzTV configuration
+  </Step>
+</Steps>
+
+### Connection Requirements
+
+Emby integration requires:
+
+- **Server Address**: Complete URL to your Emby server (e.g., `http://emby-server:8096`)
+- **API Key**: The API key generated in Emby dashboard
+
+<CodeGroup>
+```csharp EmbySecrets.cs
+public class EmbySecrets : RemoteMediaSourceSecrets
+{
+    public string Address { get; set; }  // e.g., "http://emby-server:8096"
+    public string ApiKey { get; set; }   // API key from Emby dashboard
+}
+```
+</CodeGroup>
+
+## Server Connection
+
+### Server Information Retrieval
+
+When establishing a connection, ErsatzTV retrieves server details:
+
+<CodeGroup>
+```csharp EmbyApiClient.cs
+public async Task<Either<BaseError, EmbyServerInformation>> 
+    GetServerInformation(
+        string address,
+        string apiKey)
+{
+    try
+    {
+        IEmbyApi service = RestService.For<IEmbyApi>(address);
+        var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(5));
+        
+        return await service.GetSystemInformation(apiKey, cts.Token)
+            .Map(response => new EmbyServerInformation(
+                response.ServerName, 
+                response.OperatingSystem
+            ));
+    }
+    catch (Exception ex) when (ex is TaskCanceledException or 
+                                    OperationCanceledException)
+    {
+        _logger.LogError(ex, "Timeout getting emby server name");
+        return BaseError.New("Emby did not respond in time");
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error getting emby server name");
+        return BaseError.New(ex.Message);
+    }
+}
+```
+</CodeGroup>
+
+### Connection Features
+
+- **Timeout Protection**: 5-second timeout for initial connection
+- **Error Handling**: Comprehensive exception handling for network issues
+- **Server Identification**: Captures server name and operating system
+- **Validation**: Confirms API key has appropriate access
+
+## Library Synchronization
+
+### Library Discovery
+
+ErsatzTV discovers and synchronizes Emby libraries through the API:
+
+<CodeGroup>
+```csharp IEmbyApiClient.cs
+public interface IEmbyApiClient
+{
+    Task<Either<BaseError, EmbyServerInformation>> GetServerInformation(
+        string address, 
+        string apiKey);
+        
+    Task<Either<BaseError, List<EmbyLibrary>>> GetLibraries(
+        string address, 
+        string apiKey);
+
+    IAsyncEnumerable<Tuple<EmbyMovie, int>> GetMovieLibraryItems(
+        string address, 
+        string apiKey, 
+        EmbyLibrary library);
+
+    IAsyncEnumerable<Tuple<EmbyShow, int>> GetShowLibraryItems(
+        string address, 
+        string apiKey, 
+        EmbyLibrary library);
+}
+```
+</CodeGroup>
+
+<CodeGroup>
+```csharp EmbyApiClient.cs
+public async Task<Either<BaseError, List<EmbyLibrary>>> GetLibraries(
+    string address, 
+    string apiKey)
+{
+    try
+    {
+        IEmbyApi service = RestService.For<IEmbyApi>(address);
+        List<EmbyLibraryResponse> libraries = 
+            await service.GetLibraries(apiKey);
+        return libraries
+            .Map(Project)
+            .Somes()
+            .ToList();
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error getting emby libraries");
+        return BaseError.New(ex.Message);
+    }
+}
+```
+</CodeGroup>
+
+### Supported Content Types
+
+ErsatzTV synchronizes the following from Emby:
+
+<CardGroup cols={2}>
+  <Card title="Movies" icon="film">
+    Complete movie libraries with metadata
+  </Card>
+  <Card title="TV Shows" icon="tv">
+    Series with seasons and episodes
+  </Card>
+  <Card title="Collections" icon="layer-group">
+    Emby collections and boxsets
+  </Card>
+  <Card title="Metadata" icon="tags">
+    Artwork, ratings, and descriptions
+  </Card>
+</CardGroup>
+
+### Content Retrieval
+
+ErsatzTV retrieves content hierarchically:
+
+#### Movies
+<CodeGroup>
+```csharp EmbyApiClient.cs
+public IAsyncEnumerable<Tuple<EmbyMovie, int>> GetMovieLibraryItems(
+    string address,
+    string apiKey,
+    EmbyLibrary library)
+    => GetPagedLibraryContents(
+        address,
+        library,
+        library.ItemId,
+        (service, itemId, skip, pageSize) => service.GetMovieLibraryItems(
+            apiKey,
+            itemId,
+            startIndex: skip,
+            limit: pageSize),
+        (maybeLibrary, item) => maybeLibrary
+            .Map(lib => ProjectToMovie(lib, item))
+            .Flatten());
+```
+</CodeGroup>
+
+#### TV Shows
+<CodeGroup>
+```csharp EmbyApiClient.cs
+public IAsyncEnumerable<Tuple<EmbyShow, int>> GetShowLibraryItems(
+    string address,
+    string apiKey,
+    EmbyLibrary library)
+    => GetPagedLibraryContents(
+        address,
+        library,
+        library.ItemId,
+        (service, itemId, skip, pageSize) => service.GetShowLibraryItems(
+            apiKey,
+            itemId,
+            startIndex: skip,
+            limit: pageSize),
+        (_, item) => ProjectToShow(item));
+```
+</CodeGroup>
+
+#### Seasons and Episodes
+<CodeGroup>
+```csharp IEmbyApiClient.cs
+IAsyncEnumerable<Tuple<EmbySeason, int>> GetSeasonLibraryItems(
+    string address,
+    string apiKey,
+    EmbyLibrary library,
+    string showId);
+
+IAsyncEnumerable<Tuple<EmbyEpisode, int>> GetEpisodeLibraryItems(
+    string address,
+    string apiKey,
+    EmbyLibrary library,
+    string showId,
+    string seasonId);
+```
+</CodeGroup>
+
+### Pagination and Streaming
+
+The Emby client uses efficient pagination:
+
+- **Streaming API**: Uses `IAsyncEnumerable` for memory-efficient processing
+- **Configurable Batches**: Adjustable page sizes for API requests
+- **Progress Tracking**: Returns item counts for synchronization progress
+- **Lazy Evaluation**: Processes items as they're retrieved
+
+<CodeGroup>
+```csharp EmbyApiClient.cs
+public IAsyncEnumerable<Tuple<EmbyEpisode, int>> GetEpisodeLibraryItems(
+    string address,
+    string apiKey,
+    EmbyLibrary library,
+    string showId,
+    string seasonId) => GetPagedLibraryContents(
+    address,
+    library,
+    seasonId,
+    (service, _, skip, pageSize) => service.GetEpisodeLibraryItems(
+        apiKey,
+        showId,
+        seasonId,
+        startIndex: skip,
+        limit: pageSize),
+    (maybeLibrary, item) => maybeLibrary
+        .Map(lib => ProjectToEpisode(lib, item))
+        .Flatten());
+```
+</CodeGroup>
+
+## Playback Information
+
+### Media Version Details
+
+ErsatzTV retrieves comprehensive playback information for each item:
+
+<CodeGroup>
+```csharp IEmbyApiClient.cs
+Task<Either<BaseError, MediaVersion>> GetPlaybackInfo(
+    string address,
+    string apiKey,
+    EmbyLibrary library,
+    string itemId);
+```
+</CodeGroup>
+
+Playback info includes:
+
+- **Video Streams**: Codec, resolution, bitrate, frame rate
+- **Audio Streams**: Codec, channels, language, bitrate
+- **Subtitle Streams**: Language, format, forced/default flags
+- **Container**: File format and size
+- **Duration**: Runtime in various formats
+
+## Collections
+
+Emby collections can be synchronized to ErsatzTV:
+
+<CodeGroup>
+```csharp IEmbyApiClient.cs
+IAsyncEnumerable<Tuple<EmbyCollection, int>> GetCollectionLibraryItems(
+    string address, 
+    string apiKey);
+
+IAsyncEnumerable<Tuple<MediaItem, int>> GetCollectionItems(
+    string address, 
+    string apiKey, 
+    string collectionId);
+```
+</CodeGroup>
+
+### Collection Features
+
+- **Boxsets**: Movie franchises and series
+- **Custom Collections**: Manually curated groups
+- **Collection Metadata**: Artwork and descriptions
+- **Member Items**: All items within each collection
+
+<Info>
+ErsatzTV caches the Emby collections library item ID for efficient retrieval across synchronization operations.
+</Info>
+
+## Path Replacements
+
+Path replacements solve the problem of different filesystem views between Emby and ErsatzTV.
+
+### When to Use Path Replacements
+
+<CardGroup cols={2}>
+  <Card title="Containerized Deployments" icon="docker">
+    Docker containers with different volume mounts
+  </Card>
+  <Card title="Remote Media" icon="server">
+    Network shares mounted at different locations
+  </Card>
+  <Card title="Cross-Platform" icon="laptop-code">
+    Windows server with Linux ErsatzTV client
+  </Card>
+  <Card title="Virtual Machines" icon="cloud">
+    VM guests with different path mappings
+  </Card>
+</CardGroup>
+
+### Configuration
+
+<CodeGroup>
+```csharp UpdateEmbyPathReplacements.cs
+public record UpdateEmbyPathReplacements(
+    int EmbyMediaSourceId,
+    List<EmbyPathReplacementItem> PathReplacements
+) : IRequest<Either<BaseError, Unit>>;
+
+public record EmbyPathReplacementItem(
+    int Id, 
+    string EmbyPath, 
+    string LocalPath
+);
+```
+</CodeGroup>
+
+### Example Mappings
+
+<CodeGroup>
+```yaml Docker Setup
+version: '3'
+services:
+  emby:
+    volumes:
+      - /srv/media:/media
+  
+  ersatztv:
+    volumes:
+      - /srv/media:/mnt/emby
+
+# Configuration:
+# Emby Path: /media/Movies
+# Local Path: /mnt/emby/Movies
+```
+
+```yaml Network Share
+# Emby sees NAS as: /mnt/nas/content
+# ErsatzTV mounts it as: /media/nas
+
+path_replacements:
+  - emby_path: "/mnt/nas/content"
+    local_path: "/media/nas"
+```
+
+```yaml Windows to Linux
+# Emby on Windows: E:\\Videos
+# ErsatzTV on Linux: /mnt/videos
+
+path_replacements:
+  - emby_path: "E:\\Videos"
+    local_path: "/mnt/videos"
+```
+</CodeGroup>
+
+### Path Replacement Service
+
+The `IEmbyPathReplacementService` automatically applies path replacements:
+
+- Translates Emby paths to local filesystem paths
+- Handles multiple replacement rules
+- Supports both prefix and full path replacements
+- Caches replacement results for performance
+
+## Library Preferences
+
+Customize library behavior with preferences:
+
+- **Automatic Synchronization**: Schedule periodic library updates
+- **Metadata Options**: Control which metadata fields to sync
+- **Collection Sync**: Choose whether to import collections
+- **Update Frequency**: Set how often to check for changes
+
+## Search Integration
+
+Emby content is indexed for search:
+
+- **Title Search**: Find content by title
+- **Actor Search**: Search by cast members
+- **Genre Filtering**: Filter by genre tags
+- **Full-Text Search**: Search descriptions and metadata
+
+## Disconnecting from Emby
+
+To remove an Emby connection:
+
+1. **Halt Synchronization**: Stop all active sync operations
+2. **Remove Credentials**: Clear stored API key and server address
+3. **Handle Content**: Choose to keep or remove synced media
+4. **Update Search**: Refresh search index to remove entries
+
+<Warning>
+Disconnecting stops access to Emby libraries. Already-created channels can optionally preserve the content or be updated to remove Emby items.
+</Warning>
+
+## Troubleshooting
+
+### Connection Problems
+
+<AccordionGroup>
+  <Accordion title="Cannot Connect to Emby Server">
+    - Verify Emby server is running and accessible
+    - Check server URL format (must include protocol: http:// or https://)
+    - Confirm port number is correct (default: 8096)
+    - Test connectivity: `curl http://emby-server:8096/System/Info`
+    - Check firewall and network settings
+  </Accordion>
+  
+  <Accordion title="Invalid API Key Error">
+    - Verify API key was copied correctly without extra spaces
+    - Check key hasn't been deleted in Emby dashboard
+    - Ensure key has required permissions
+    - Try generating a new API key
+  </Accordion>
+  
+  <Accordion title="Connection Timeout">
+    - Verify network latency between servers
+    - Check if Emby server is overloaded
+    - Increase timeout settings if on slow connection
+    - Ensure no proxy or VPN interfering
+  </Accordion>
+</AccordionGroup>
+
+### Synchronization Issues
+
+<AccordionGroup>
+  <Accordion title="Libraries Not Appearing">
+    - Confirm API key has access to libraries
+    - Check library type (only Movies and TV Shows sync)
+    - Verify libraries contain content
+    - Review Emby library permissions
+    - Check ErsatzTV logs for errors
+  </Accordion>
+  
+  <Accordion title="Missing Content">
+    - Ensure Emby has scanned the library
+    - Verify metadata is available in Emby
+    - Check if content matches supported types
+    - Manually trigger sync in ErsatzTV
+  </Accordion>
+  
+  <Accordion title="Metadata Issues">
+    - Verify Emby has scraped metadata
+    - Check artwork URLs are accessible
+    - Ensure metadata providers are configured
+    - Re-identify content in Emby if needed
+  </Accordion>
+</AccordionGroup>
+
+### Playback Problems
+
+<AccordionGroup>
+  <Accordion title="File Not Found">
+    - Configure path replacements correctly
+    - Verify ErsatzTV can access media files
+    - Check filesystem permissions
+    - Ensure mount points are active
+    - Test file path with `ls` or `dir` command
+  </Accordion>
+  
+  <Accordion title="Transcoding Failures">
+    - Verify FFmpeg is installed and accessible
+    - Check available disk space for transcoding
+    - Review FFmpeg capabilities and codecs
+    - Check ErsatzTV transcoding settings
+  </Accordion>
+</AccordionGroup>
+
+### Performance Optimization
+
+<AccordionGroup>
+  <Accordion title="Slow Synchronization">
+    - Reduce sync frequency for large libraries
+    - Ensure both servers have adequate resources
+    - Check network bandwidth and latency
+    - Consider syncing libraries individually
+    - Use scheduled sync during off-peak hours
+  </Accordion>
+  
+  <Accordion title="High Resource Usage">
+    - Limit concurrent sync operations
+    - Reduce page size for API requests
+    - Clear cache periodically
+    - Monitor memory usage during sync
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Configuration
+
+### Custom Metadata Providers
+
+Configure which metadata providers to prioritize:
+
+- Emby's metadata
+- Local NFO files
+- Online databases (TMDB, TVDB)
+
+### Multiple Emby Servers
+
+ErsatzTV supports connecting to multiple Emby servers:
+
+- Each server is configured independently
+- Libraries from different servers can coexist
+- Path replacements are per-server
+- Collections can span multiple servers
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plex Integration" icon="play" href="/media-sources/plex">
+    Also connect to Plex Media Server
+  </Card>
+  <Card title="Jellyfin Integration" icon="video" href="/media-sources/jellyfin">
+    Add Jellyfin as another source
+  </Card>
+  <Card title="Local Libraries" icon="folder" href="/media-sources/local-libraries">
+    Add local media files
+  </Card>
+  <Card title="Create Channels" icon="tv" href="/essentials/channels">
+    Build custom channels from Emby content
+  </Card>
+</CardGroup>

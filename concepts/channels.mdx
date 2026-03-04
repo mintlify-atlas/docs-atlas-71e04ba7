@@ -1,0 +1,155 @@
+---
+title: 'Channels'
+description: 'Understanding channels in ErsatzTV'
+---
+
+## What is a channel?
+
+A channel in ErsatzTV represents a virtual television channel that streams media content continuously or on-demand. Each channel has a unique number, name, and configuration that controls how content is streamed to viewers.
+
+## Channel properties
+
+### Basic information
+
+Every channel includes the following core properties:
+
+- **Number** - A unique identifier for the channel (e.g., `1`, `1.1`, `2.5`). Must follow the format `X` or `X.Y` where Y can be 1-2 digits.
+- **Name** - The display name of the channel
+- **Group** - Optional grouping for organizing channels
+- **Categories** - Optional category tags for filtering and organization
+
+### FFmpeg profile
+
+Channels reference an FFmpeg profile that defines:
+
+- Video codec and encoding settings
+- Audio codec and format
+- Resolution and scaling behavior
+- Hardware acceleration options
+- Bitrate and quality parameters
+
+See the [FFmpeg Profiles](/configuration/ffmpeg-profiles) documentation for detailed configuration.
+
+## Streaming modes
+
+ErsatzTV supports multiple streaming modes for delivering content:
+
+<CardGroup cols={2}>
+  <Card title="Transport Stream" icon="signal-stream">
+    Traditional MPEG-TS streaming format compatible with most IPTV clients and media players.
+  </Card>
+  <Card title="HLS Direct" icon="play">
+    HTTP Live Streaming with direct source file delivery when transcoding is not required.
+  </Card>
+  <Card title="HLS Segmenter" icon="layer-group">
+    HTTP Live Streaming with on-demand segmentation and transcoding.
+  </Card>
+  <Card title="Hybrid Mode" icon="circle-nodes">
+    Transport Stream with HLS capabilities for maximum compatibility.
+  </Card>
+</CardGroup>
+
+The streaming mode is configured per-channel using the `StreamingMode` property.
+
+## Playout modes
+
+Channels can operate in different playout modes:
+
+### Continuous mode
+
+In continuous mode, the channel continuously plays content according to its schedule. This is the traditional "always on" TV channel behavior.
+
+### On-demand mode
+
+In on-demand mode, the channel only generates content when viewers are actively watching. This saves system resources when channels are not being viewed.
+
+<Info>
+On-demand mode is configured using the `ChannelPlayoutMode` property and is particularly useful for channels that are infrequently watched.
+</Info>
+
+## Playout sources
+
+Channels can generate content from two different sources:
+
+### Generated playout
+
+The default mode where the channel generates its own playout based on a schedule. The schedule determines what content plays and when.
+
+### Mirror playout
+
+A channel can mirror another channel's playout with an optional time offset. This is useful for creating time-shifted versions of channels (e.g., East Coast and West Coast feeds).
+
+```csharp
+// Mirror configuration
+PlayoutSource = ChannelPlayoutSource.Mirror
+MirrorSourceChannelId = 1  // Channel to mirror
+PlayoutOffset = TimeSpan.FromHours(3)  // Optional offset
+```
+
+## Transcode modes
+
+ErsatzTV currently supports on-demand transcoding:
+
+- **OnDemand** - Content is transcoded as needed based on the FFmpeg profile settings and source media characteristics
+
+Future versions may include additional transcode modes for different optimization strategies.
+
+## Audio and subtitle preferences
+
+Channels can specify preferences for audio and subtitle streams:
+
+### Audio selection
+
+- **PreferredAudioLanguageCode** - ISO language code for preferred audio track (e.g., `eng`, `spa`)
+- **PreferredAudioTitle** - Preferred audio track by title
+- **StreamSelectorMode** - How to select streams from media files
+- **StreamSelector** - Custom stream selection expression
+
+### Subtitle configuration
+
+- **PreferredSubtitleLanguageCode** - ISO language code for preferred subtitles
+- **SubtitleMode** - Controls subtitle rendering and pass-through behavior
+
+See [Stream Selectors](/advanced/stream-selectors) for advanced audio and subtitle selection.
+
+## Watermarks and graphics
+
+Channels support overlaying watermarks and graphics elements on the video stream:
+
+- **Watermark** - A persistent logo or image displayed on the channel
+- **WatermarkId** - Reference to a channel watermark configuration
+
+Watermarks can be configured with position, size, opacity, and timing. See [Watermarks](/advanced/watermarks) for details.
+
+## Fallback content
+
+When a channel runs out of scheduled content, it can display fallback content:
+
+- **FallbackFillerId** - Reference to a filler preset that provides content when the schedule is empty
+- **SlugSeconds** - Duration to pad between content items
+
+## Idle behavior
+
+The `IdleBehavior` property controls what happens when no clients are connected to the channel:
+
+- **StopOnDisconnect** - Stop streaming when all clients disconnect (saves resources)
+- **KeepRunning** - Continue streaming even when no clients are connected
+
+## EPG integration
+
+Channels integrate with Electronic Program Guide (EPG) systems:
+
+- **ShowInEpg** - Control whether the channel appears in EPG listings
+- **IsEnabled** - Enable or disable the entire channel
+
+The channel's playout schedule generates EPG data in XMLTV format for use with media players and IPTV clients.
+
+## Channel relationships
+
+Channels have relationships with other entities:
+
+- **Playouts** - One or more playout configurations that generate the channel's content schedule
+- **Artwork** - Channel logos and images for EPG display
+- **MirrorSourceChannel** - Reference to another channel when using mirror mode
+
+See [Playouts](/concepts/playouts) for information on how channels generate their content schedule.

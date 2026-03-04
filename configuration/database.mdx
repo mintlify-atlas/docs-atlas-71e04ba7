@@ -1,0 +1,368 @@
+---
+title: Database Configuration
+description: Configure ErsatzTV database backend (SQLite or MySQL)
+---
+
+ErsatzTV supports two database backends: SQLite (default) and MySQL. SQLite is suitable for most installations, while MySQL provides better performance for large media libraries and multi-instance deployments.
+
+## Database Providers
+
+### SQLite (Default)
+
+SQLite is the default database provider and requires no additional configuration. The database file is stored in your ErsatzTV configuration directory.
+
+**Database Location:**
+```
+{ConfigFolder}/ersatztv.sqlite3
+```
+
+Where `{ConfigFolder}` is:
+- Linux/macOS: `~/.local/share/ersatztv/`
+- Windows: `%LocalAppData%\ersatztv\`
+- Docker: `/root/.local/share/ersatztv/` (or custom path via `ETV_CONFIG_FOLDER`)
+
+**Advantages:**
+- Zero configuration required
+- File-based, easy to backup
+- Sufficient for most installations
+- No external dependencies
+
+**Limitations:**
+- Single connection writer
+- Not suitable for network file systems (NFS, SMB)
+- May be slower with extremely large libraries (100,000+ items)
+
+### MySQL
+
+MySQL (or MariaDB) provides better performance for large installations and supports concurrent access.
+
+**Requirements:**
+- MySQL 8.0+ or MariaDB 10.5+
+- A database and user with appropriate permissions
+
+**Configuration:**
+
+Set the database provider and connection string in `appsettings.json`:
+
+```json appsettings.json
+{
+  "provider": "MySql",
+  "MySql": {
+    "ConnectionString": "Server=localhost;Database=ersatztv;User=ersatztv;Password=yourpassword;"
+  }
+}
+```
+
+<Warning>
+  The `appsettings.json` file is located in the ErsatzTV installation directory (where the ErsatzTV executable is located), **not** in the configuration folder.
+</Warning>
+
+**Connection String Format:**
+```
+Server=hostname;Port=3306;Database=dbname;User=username;Password=password;
+```
+
+**Advantages:**
+- Better performance for large libraries
+- Supports concurrent access
+- Can be hosted on a separate server
+- Better for clustered/containerized deployments
+
+## Database Setup
+
+### SQLite Setup
+
+No setup required. ErsatzTV creates the SQLite database automatically on first run.
+
+### MySQL Setup
+
+1. **Create Database and User:**
+
+   ```sql
+   CREATE DATABASE ersatztv CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+   CREATE USER 'ersatztv'@'%' IDENTIFIED BY 'your_secure_password';
+   GRANT ALL PRIVILEGES ON ersatztv.* TO 'ersatztv'@'%';
+   FLUSH PRIVILEGES;
+   ```
+
+2. **Configure ErsatzTV:**
+
+   Edit `appsettings.json` in the ErsatzTV installation directory:
+
+   ```json
+   {
+     "provider": "MySql",
+     "MySql": {
+       "ConnectionString": "Server=localhost;Database=ersatztv;User=ersatztv;Password=your_secure_password;"
+     }
+   }
+   ```
+
+3. **Start ErsatzTV:**
+
+   ErsatzTV will automatically create all required tables and apply migrations on startup.
+
+<Note>
+  ErsatzTV uses Entity Framework Core migrations to manage the database schema. All migrations are applied automatically when ErsatzTV starts.
+</Note>
+
+## Switching Databases
+
+<Warning>
+  Switching between SQLite and MySQL requires exporting and reimporting your configuration. There is no automatic migration tool.
+</Warning>
+
+### SQLite to MySQL
+
+1. Stop ErsatzTV
+2. Create and configure MySQL database (see MySQL Setup above)
+3. Update `appsettings.json` to use MySQL
+4. Start ErsatzTV (this creates an empty MySQL database)
+5. Reconfigure your channels, libraries, and settings
+
+<Info>
+  ErsatzTV does not provide a tool to migrate data between database providers. You will need to reconfigure your installation.
+</Info>
+
+### MySQL to SQLite
+
+1. Stop ErsatzTV
+2. Remove or comment out MySQL configuration in `appsettings.json`
+3. Remove `"provider": "MySql"` line (defaults to SQLite)
+4. Delete the existing SQLite database file if present
+5. Start ErsatzTV
+6. Reconfigure your channels, libraries, and settings
+
+## Migrations
+
+ErsatzTV uses Entity Framework Core migrations to manage database schema changes.
+
+### Automatic Migrations
+
+Migrations are applied automatically when ErsatzTV starts:
+
+```log
+[INF] Applying database migrations...
+[INF] Database migration complete
+```
+
+### Migration Assemblies
+
+ErsatzTV uses provider-specific migration assemblies:
+
+- **SQLite:** `ErsatzTV.Infrastructure.Sqlite`
+- **MySQL:** `ErsatzTV.Infrastructure.MySql`
+
+These are configured automatically in `Startup.cs:389-422`.
+
+### Downgrade Detection
+
+ErsatzTV detects downgrades (running an older version with a newer database) and will refuse to start:
+
+```log
+[CRT] Downgrade detected! Database has migrations not known to this version of ErsatzTV
+```
+
+If you encounter this error, upgrade to the latest version of ErsatzTV or restore from a backup.
+
+## Backup and Restore
+
+### SQLite Backup
+
+**Manual Backup:**
+
+1. Stop ErsatzTV
+2. Copy the database file:
+   ```bash
+   cp ~/.local/share/ersatztv/ersatztv.sqlite3 ~/backup/ersatztv-backup.sqlite3
+   ```
+3. Start ErsatzTV
+
+**Automated Backup:**
+
+Use a cron job or scheduled task to regularly backup the SQLite file:
+
+```bash
+#!/bin/bash
+BACKUP_DIR="$HOME/backups/ersatztv"
+DB_PATH="$HOME/.local/share/ersatztv/ersatztv.sqlite3"
+mkdir -p "$BACKUP_DIR"
+cp "$DB_PATH" "$BACKUP_DIR/ersatztv-$(date +%Y%m%d-%H%M%S).sqlite3"
+# Keep only last 30 days
+find "$BACKUP_DIR" -name "ersatztv-*.sqlite3" -mtime +30 -delete
+```
+
+**Restore:**
+
+1. Stop ErsatzTV
+2. Replace the database file:
+   ```bash
+   cp ~/backup/ersatztv-backup.sqlite3 ~/.local/share/ersatztv/ersatztv.sqlite3
+   ```
+3. Start ErsatzTV
+
+### MySQL Backup
+
+**Manual Backup:**
+
+```bash
+mysqldump -u ersatztv -p ersatztv > ersatztv-backup.sql
+```
+
+**Automated Backup:**
+
+```bash
+#!/bin/bash
+BACKUP_DIR="$HOME/backups/ersatztv"
+mkdir -p "$BACKUP_DIR"
+mysqldump -u ersatztv -pyourpassword ersatztv | gzip > "$BACKUP_DIR/ersatztv-$(date +%Y%m%d-%H%M%S).sql.gz"
+find "$BACKUP_DIR" -name "ersatztv-*.sql.gz" -mtime +30 -delete
+```
+
+**Restore:**
+
+```bash
+mysql -u ersatztv -p ersatztv < ersatztv-backup.sql
+```
+
+## Database Maintenance
+
+### SQLite Maintenance
+
+**Optimize Database:**
+
+Periodically vacuum the SQLite database to reclaim space:
+
+```bash
+sqlite3 ~/.local/share/ersatztv/ersatztv.sqlite3 "VACUUM;"
+```
+
+**Check Integrity:**
+
+```bash
+sqlite3 ~/.local/share/ersatztv/ersatztv.sqlite3 "PRAGMA integrity_check;"
+```
+
+### MySQL Maintenance
+
+**Optimize Tables:**
+
+```sql
+OPTIMIZE TABLE table_name;
+```
+
+**Check Tables:**
+
+```sql
+CHECK TABLE table_name;
+```
+
+## Configuration Reference
+
+### Database Provider Selection
+
+Configured in `appsettings.json`:
+
+<ParamField path="provider" type="string" default="Sqlite">
+  Database provider to use:
+  - `Sqlite` - SQLite database (default)
+  - `MySql` - MySQL/MariaDB database
+</ParamField>
+
+### SQLite Configuration
+
+<ParamField path="Data Source" type="string">
+  Path to SQLite database file. Automatically set to `{ConfigFolder}/ersatztv.sqlite3`.
+</ParamField>
+
+<ParamField path="foreign keys" type="boolean" default="true">
+  Enable foreign key constraints in SQLite. Always set to `true`.
+</ParamField>
+
+**Connection String (auto-generated):**
+```
+Data Source={DatabasePath};foreign keys=true;
+```
+
+### MySQL Configuration
+
+<ParamField path="MySql.ConnectionString" type="string" required>
+  MySQL connection string in the format:
+  ```
+  Server=hostname;Port=3306;Database=dbname;User=username;Password=password;
+  ```
+</ParamField>
+
+**Connection String Parameters:**
+
+- `Server` - MySQL server hostname or IP
+- `Port` - MySQL server port (default: 3306)
+- `Database` - Database name
+- `User` - MySQL username
+- `Password` - MySQL password
+- `SslMode` - SSL mode (optional): `None`, `Preferred`, `Required`
+- `CharSet` - Character set (default: `utf8mb4`)
+
+**Example with SSL:**
+```
+Server=mysql.example.com;Database=ersatztv;User=etv;Password=secure;SslMode=Required;
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="SQLite database is locked">
+    This occurs when another process is accessing the database. Ensure only one instance of ErsatzTV is running. If using Docker, ensure the database is not on a network file system.
+  </Accordion>
+
+  <Accordion title="MySQL connection failed">
+    Check:
+    - MySQL server is running
+    - Connection string is correct
+    - User has appropriate permissions
+    - Firewall allows connection to MySQL port
+    - MySQL is configured to accept remote connections (if not localhost)
+  </Accordion>
+
+  <Accordion title="Migration errors">
+    If migrations fail:
+    1. Check database logs for errors
+    2. Ensure database user has CREATE/ALTER/DROP permissions
+    3. Restore from backup if necessary
+    4. Report issue on GitHub with logs
+  </Accordion>
+
+  <Accordion title="Database corruption">
+    **SQLite:**
+    ```bash
+    sqlite3 ersatztv.sqlite3 ".recover" | sqlite3 ersatztv-recovered.sqlite3
+    ```
+
+    **MySQL:**
+    ```sql
+    REPAIR TABLE table_name;
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tuning
+
+### SQLite Performance
+
+- Store database on fast local storage (SSD recommended)
+- Avoid network file systems (NFS, SMB, etc.)
+- Increase `journal_mode` to WAL for better concurrent access
+- Periodically run `VACUUM` to optimize database
+
+### MySQL Performance
+
+- Use InnoDB storage engine (default)
+- Allocate sufficient `innodb_buffer_pool_size`
+- Enable `innodb_file_per_table`
+- Use MySQL 8.0+ for best performance
+- Consider dedicated MySQL server for very large installations
+
+## See Also
+
+- [Environment Variables](/configuration/environment-variables)
+- [Installation Guide](/getting-started/installation)

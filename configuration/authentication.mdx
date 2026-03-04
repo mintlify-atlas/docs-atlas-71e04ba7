@@ -1,0 +1,410 @@
+---
+title: Authentication
+description: Configure OIDC and JWT authentication for ErsatzTV
+---
+
+ErsatzTV supports two authentication methods: OpenID Connect (OIDC) for web UI access and JSON Web Tokens (JWT) for API and IPTV endpoint access. Both are optional and disabled by default.
+
+## Overview
+
+Authentication in ErsatzTV is designed to:
+
+- Protect web UI access via OIDC authentication
+- Secure API endpoints with JWT tokens
+- Allow IPTV endpoints to use JWT authentication
+- Support integration with identity providers like Authelia, Keycloak, and Auth0
+
+<Info>
+  By default, ErsatzTV has **no authentication**. Anyone with network access can use the web UI and API. Enable authentication if you expose ErsatzTV to untrusted networks.
+</Info>
+
+## OpenID Connect (OIDC)
+
+OIDC provides secure authentication for the ErsatzTV web interface using an external identity provider.
+
+### Configuration
+
+OIDC is configured via `appsettings.json` or environment variables:
+
+```json appsettings.json
+{
+  "OIDC": {
+    "Authority": "https://auth.example.com",
+    "ClientId": "ersatztv",
+    "ClientSecret": "your-client-secret",
+    "LogoutUri": "https://auth.example.com/logout"
+  }
+}
+```
+
+<ParamField path="OIDC.Authority" type="string" required>
+  The URL of your OIDC provider's discovery endpoint. This is typically your identity provider's base URL.
+
+  **Examples:**
+  - Authelia: `https://auth.example.com`
+  - Keycloak: `https://keycloak.example.com/realms/master`
+  - Auth0: `https://your-tenant.auth0.com`
+</ParamField>
+
+<ParamField path="OIDC.ClientId" type="string" required>
+  The client ID registered with your OIDC provider for ErsatzTV.
+</ParamField>
+
+<ParamField path="OIDC.ClientSecret" type="string" required>
+  The client secret for your OIDC client. Keep this secure.
+</ParamField>
+
+<ParamField path="OIDC.LogoutUri" type="string">
+  Optional logout URL. When provided, ErsatzTV will redirect to this URL after logout instead of using the OIDC provider's logout endpoint.
+</ParamField>
+
+### How OIDC Works
+
+When OIDC is enabled (from `Startup.cs:169-221`):
+
+1. User accesses ErsatzTV web UI
+2. User is redirected to OIDC provider for authentication
+3. After successful authentication, user is redirected back to ErsatzTV
+4. ErsatzTV validates the authentication and creates a session
+5. All web UI pages require authentication
+
+**OIDC Configuration Details:**
+- Response Type: `code` (authorization code flow)
+- PKCE: Enabled for security
+- Scopes: `openid` (only scope requested)
+- Callback Path: `/callback`
+- Cookies: Secure, HttpOnly, SameSite=None
+
+### OIDC Provider Setup Examples
+
+<Tabs>
+  <Tab title="Authelia">
+    **Authelia Configuration:**
+
+    ```yaml configuration.yml
+    identity_providers:
+      oidc:
+        clients:
+          - id: ersatztv
+            description: ErsatzTV
+            secret: '$pbkdf2-sha512$310000$...'
+            redirect_uris:
+              - https://ersatztv.example.com/callback
+            scopes:
+              - openid
+            grant_types:
+              - authorization_code
+            response_types:
+              - code
+    ```
+
+    **ErsatzTV Configuration:**
+
+    ```json appsettings.json
+    {
+      "OIDC": {
+        "Authority": "https://auth.example.com",
+        "ClientId": "ersatztv",
+        "ClientSecret": "your-plain-text-secret",
+        "LogoutUri": "https://auth.example.com/logout"
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Keycloak">
+    **Keycloak Setup:**
+
+    1. Create a new client in Keycloak
+    2. Set Client ID: `ersatztv`
+    3. Client Protocol: `openid-connect`
+    4. Access Type: `confidential`
+    5. Valid Redirect URIs: `https://ersatztv.example.com/callback`
+    6. Copy the client secret from the Credentials tab
+
+    **ErsatzTV Configuration:**
+
+    ```json appsettings.json
+    {
+      "OIDC": {
+        "Authority": "https://keycloak.example.com/realms/master",
+        "ClientId": "ersatztv",
+        "ClientSecret": "keycloak-client-secret"
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Auth0">
+    **Auth0 Setup:**
+
+    1. Create a Regular Web Application
+    2. Configure Allowed Callback URLs: `https://ersatztv.example.com/callback`
+    3. Copy Domain, Client ID, and Client Secret
+
+    **ErsatzTV Configuration:**
+
+    ```json appsettings.json
+    {
+      "OIDC": {
+        "Authority": "https://your-tenant.auth0.com",
+        "ClientId": "your-client-id",
+        "ClientSecret": "your-client-secret"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Testing OIDC
+
+1. Configure OIDC settings in `appsettings.json`
+2. Restart ErsatzTV
+3. Access the web UI - you should be redirected to your identity provider
+4. After successful login, you should be redirected back to ErsatzTV
+
+Check logs for OIDC initialization:
+```log
+[INF] OIDC authentication enabled with authority: https://auth.example.com
+```
+
+## JWT Authentication
+
+JWT (JSON Web Token) authentication allows API and IPTV endpoints to be secured with bearer tokens.
+
+### Configuration
+
+JWT is configured via `appsettings.json` or environment variables:
+
+```json appsettings.json
+{
+  "JWT": {
+    "IssuerSigningKey": "your-secret-key-at-least-32-characters-long"
+  }
+}
+```
+
+<ParamField path="JWT.IssuerSigningKey" type="string" required>
+  Secret key used to sign and validate JWT tokens. **Must be at least 32 characters long** for security.
+
+  Generate a secure key:
+  ```bash
+  openssl rand -base64 32
+  ```
+</ParamField>
+
+<Warning>
+  Keep your JWT signing key secure. Anyone with this key can generate valid tokens for your ErsatzTV instance.
+</Warning>
+
+### How JWT Works
+
+When JWT is enabled (from `Startup.cs:224-252`):
+
+1. Client generates or obtains a JWT token
+2. Client includes token in API requests:
+   - Header: `Authorization: Bearer <token>`
+   - Query parameter: `?access_token=<token>` (for IPTV endpoints)
+3. ErsatzTV validates the token signature
+4. Request is allowed if token is valid
+
+**JWT Configuration Details:**
+- Algorithm: HMAC-SHA256
+- Issuer validation: Disabled (no specific issuer required)
+- Audience validation: Disabled (no specific audience required)
+- Lifetime validation: Enabled (tokens expire)
+- Signing key validation: Enabled (must match configured key)
+
+### Generating JWT Tokens
+
+ErsatzTV provides a helper method to generate tokens (from `JwtHelper.cs:22-32`):
+
+**Token Properties:**
+- Expiration: 24 hours from creation
+- Algorithm: HMAC-SHA256
+- No claims (anonymous authentication)
+
+**Manual Token Generation:**
+
+You can generate tokens using any JWT library. Example with Python:
+
+```python
+import jwt
+import datetime
+
+signing_key = "your-secret-key-at-least-32-characters-long"
+
+token = jwt.encode(
+    {
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=1)
+    },
+    signing_key,
+    algorithm="HS256"
+)
+
+print(token)
+```
+
+Example with Node.js:
+
+```javascript
+const jwt = require('jsonwebtoken');
+
+const signingKey = 'your-secret-key-at-least-32-characters-long';
+
+const token = jwt.sign(
+  {},
+  signingKey,
+  { algorithm: 'HS256', expiresIn: '24h' }
+);
+
+console.log(token);
+```
+
+### Using JWT Tokens
+
+**API Requests:**
+
+```bash
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  http://localhost:8409/api/channels
+```
+
+**IPTV/HLS Endpoints:**
+
+```
+http://localhost:8409/iptv/channel/1.m3u8?access_token=YOUR_JWT_TOKEN
+```
+
+**M3U Playlists:**
+
+ErsatzTV automatically appends JWT tokens to URLs in generated M3U playlists when JWT authentication is enabled.
+
+### JWT Policy for IPTV
+
+ErsatzTV defines a special "JwtOnlyScheme" policy for IPTV endpoints (from `Startup.cs:270-278`). This allows IPTV endpoints to require JWT authentication even when OIDC is enabled for the web UI.
+
+## Combined Authentication
+
+You can enable both OIDC and JWT authentication simultaneously:
+
+- **OIDC** protects the web UI
+- **JWT** protects API and IPTV endpoints
+
+```json appsettings.json
+{
+  "OIDC": {
+    "Authority": "https://auth.example.com",
+    "ClientId": "ersatztv",
+    "ClientSecret": "oidc-secret"
+  },
+  "JWT": {
+    "IssuerSigningKey": "jwt-signing-key-at-least-32-characters"
+  }
+}
+```
+
+This configuration:
+- Requires login via OIDC for web UI access
+- Requires JWT tokens for API/IPTV access
+- OIDC sessions do not grant API access (separate authentication)
+
+## Disabling Authentication
+
+To disable authentication, remove or comment out the OIDC and JWT sections from `appsettings.json`:
+
+```json appsettings.json
+{
+  // "OIDC": { ... },  // commented out
+  // "JWT": { ... }     // commented out
+}
+```
+
+Restart ErsatzTV. The web UI and API will be accessible without authentication.
+
+## Reverse Proxy Authentication
+
+If using a reverse proxy with authentication (e.g., nginx with basic auth, Traefik with Authelia), you may not need ErsatzTV's built-in authentication. The reverse proxy handles authentication, and ErsatzTV runs without authentication behind it.
+
+**Example nginx with basic auth:**
+
+```nginx
+location / {
+    auth_basic "ErsatzTV";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+    proxy_pass http://localhost:8409;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+## Security Recommendations
+
+<AccordionGroup>
+  <Accordion title="Use HTTPS">
+    Always use HTTPS when authentication is enabled. OIDC and JWT tokens sent over HTTP can be intercepted.
+
+    Use a reverse proxy like nginx or Caddy to handle TLS termination.
+  </Accordion>
+
+  <Accordion title="Secure JWT Keys">
+    - Generate keys with sufficient entropy (use `openssl rand -base64 32`)
+    - Never commit keys to version control
+    - Rotate keys periodically
+    - Use different keys for different ErsatzTV instances
+  </Accordion>
+
+  <Accordion title="OIDC Client Secrets">
+    - Store client secrets securely
+    - Never expose in public repositories
+    - Use environment variables in containerized deployments
+  </Accordion>
+
+  <Accordion title="Network Security">
+    - Use firewall rules to restrict access
+    - Only expose necessary ports
+    - Consider VPN access for remote users
+    - Use reverse proxy for additional security layers
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="OIDC redirect loop">
+    Check:
+    - Authority URL is correct and accessible
+    - Client ID and secret match your provider
+    - Callback URL is configured in provider: `https://your-domain/callback`
+    - Cookies are enabled in browser
+    - `ETV_BASE_URL` is set correctly if using a path prefix
+  </Accordion>
+
+  <Accordion title="JWT tokens rejected">
+    - Verify signing key matches between token generation and ErsatzTV config
+    - Check token has not expired
+    - Ensure algorithm is HS256
+    - Verify token format: must be `Bearer <token>` in Authorization header
+  </Accordion>
+
+  <Accordion title="IPTV clients can't authenticate">
+    Most IPTV clients don't support OAuth flows. Use JWT authentication with tokens in URLs:
+    ```
+    http://ersatztv.example.com/iptv/channel/1.m3u8?access_token=TOKEN
+    ```
+  </Accordion>
+
+  <Accordion title="403 Forbidden after OIDC login">
+    - Check OIDC provider is returning required claims
+    - Verify user has access in the identity provider
+    - Check ErsatzTV logs for authorization errors
+    - Ensure time synchronization between ErsatzTV and OIDC provider
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Environment Variables](/configuration/environment-variables)
+- [Installation Guide](/getting-started/installation)

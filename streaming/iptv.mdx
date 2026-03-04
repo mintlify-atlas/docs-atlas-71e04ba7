@@ -1,0 +1,302 @@
+---
+title: IPTV Streaming
+description: Stream channels via IPTV with M3U playlists and XMLTV EPG
+---
+
+ErsatzTV provides comprehensive IPTV streaming support, allowing you to access your channels through any IPTV-compatible player using standard M3U playlists and XMLTV electronic program guides.
+
+## M3U Playlist Endpoint
+
+The main M3U playlist endpoint provides a complete channel lineup:
+
+```
+GET /iptv/channels.m3u
+```
+
+### Query Parameters
+
+<ParamField query="mode" type="string" default="mixed">
+  Streaming mode for the playlist:
+  - `mixed` - Use the configured streaming mode for each channel
+  - `ts` - Force Transport Stream mode
+  - `ts-legacy` - Force legacy Transport Stream mode
+  - `hls-direct` - Force HLS Direct mode
+  - `segmenter` - Force HLS Segmenter mode
+</ParamField>
+
+<ParamField query="access_token" type="string">
+  Optional access token for authentication (if configured)
+</ParamField>
+
+### M3U Format
+
+The generated M3U playlist includes:
+
+- **XMLTV EPG URL**: References the XMLTV guide endpoint
+- **Channel metadata**: Channel number, name, group, logo
+- **Stream information**: Video codec, audio codec, channel ID
+- **Kodi-specific properties**: When detected via User-Agent
+
+#### Example M3U Entry
+
+```m3u
+#EXTM3U url-tvg="http://localhost:8409/iptv/xmltv.xml" x-tvg-url="http://localhost:8409/iptv/xmltv.xml"
+#EXTINF:0 tvg-id="1" channel-id="ABC123" channel-number="1" CUID="ABC123" tvg-chno="1" tvg-name="Channel 1" tvg-logo="http://localhost:8409/iptv/logos/logo1.jpg" group-title="Entertainment" tvc-stream-vcodec="h264" tvc-stream-acodec="aac", Channel 1
+http://localhost:8409/iptv/channel/1.ts
+```
+
+## XMLTV EPG Endpoint
+
+Retrieve the electronic program guide in XMLTV format:
+
+```
+GET /iptv/xmltv.xml
+```
+
+This endpoint provides program schedules for all channels in the standard XMLTV XML format, compatible with most IPTV players.
+
+## Channel Streaming Endpoints
+
+### Transport Stream (MPEG-TS)
+
+Stream a channel using MPEG Transport Stream format:
+
+```
+GET /iptv/channel/{channelNumber}.ts
+```
+
+**Streaming Modes:**
+- `ts-legacy`: Continuous Transport Stream (legacy concat mode)
+- `ts`: Hybrid Transport Stream (wrapped segmenter)
+- `mixed`: Auto-detect based on channel configuration
+
+<CodeGroup>
+```bash Example Request
+curl http://localhost:8409/iptv/channel/1.ts?mode=ts
+```
+
+```bash VLC Player
+vlc http://localhost:8409/iptv/channel/1.ts
+```
+</CodeGroup>
+
+### HTTP Live Streaming (HLS)
+
+Stream a channel using HLS with adaptive bitrate:
+
+```
+GET /iptv/channel/{channelNumber}.m3u8
+```
+
+**Streaming Modes:**
+- `segmenter`: HLS with FFmpeg segmenter (recommended)
+- `segmenter-v2`: HLS with v2 segmenter
+- `segmenter-fmp4`: HLS with fMP4 segments
+- `hls-direct`: Direct HLS streaming (no segmenter)
+- `mixed`: Auto-detect based on channel configuration
+
+<CodeGroup>
+```bash Example Request
+curl http://localhost:8409/iptv/channel/1.m3u8?mode=segmenter
+```
+
+```bash FFplay
+ffplay http://localhost:8409/iptv/channel/1.m3u8
+```
+</CodeGroup>
+
+### HLS Session Playlist
+
+Access the active HLS session playlist for a channel:
+
+```
+GET /iptv/session/{channelNumber}/hls.m3u8
+```
+
+This endpoint returns the trimmed playlist for an active streaming session, automatically redirecting to start a new session if none exists.
+
+### Multi-Variant Playlist
+
+HLS streams automatically generate multi-variant playlists with codec and bitrate information:
+
+```m3u
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=10000000,RESOLUTION=1920x1080,CODECS="avc1.4D4028,mp4a.40.2"
+http://localhost:8409/iptv/session/1/hls.m3u8
+```
+
+**Supported Codecs:**
+- **Video**: H.264 (avc1), HEVC (hvc1), AV1 (av01)
+- **Audio**: AAC (mp4a.40.2), AC3 (ac-3), AAC LATM
+
+## Channel Logos
+
+Retrieve channel logo images:
+
+```
+GET /iptv/logos/{fileName}
+GET /iptv/logos/{fileName}.jpg
+```
+
+<ParamField query="contentType" type="string">
+  Optional content type override for the logo image
+</ParamField>
+
+## Streaming Modes
+
+ErsatzTV supports multiple streaming modes optimized for different use cases:
+
+<CardGroup cols={2}>
+  <Card title="Transport Stream" icon="signal-stream">
+    **Legacy Mode**: Continuous MPEG-TS stream with concat protocol
+    
+    - Best compatibility with older players
+    - No segmentation overhead
+    - Higher latency
+  </Card>
+  
+  <Card title="Transport Stream Hybrid" icon="layer-group">
+    **Hybrid Mode**: MPEG-TS with wrapped segmenter
+    
+    - Improved performance over legacy
+    - Better handling of transitions
+    - Compatible with HDHomeRun clients
+  </Card>
+  
+  <Card title="HLS Direct" icon="bolt">
+    **Direct Mode**: Real-time HLS without segmenter
+    
+    - Lowest latency
+    - Minimal CPU overhead
+    - Best for copy streaming
+  </Card>
+  
+  <Card title="HLS Segmenter" icon="cubes">
+    **Segmenter Mode**: HLS with FFmpeg segmenter
+    
+    - Best compatibility
+    - Adaptive bitrate support
+    - Recommended for most use cases
+  </Card>
+</CardGroup>
+
+## Client Configuration
+
+### VLC Media Player
+
+1. Open Network Stream: **Media > Open Network Stream**
+2. Enter the M3U URL: `http://your-server:8409/iptv/channels.m3u`
+3. Click **Play**
+
+### Kodi
+
+ErsatzTV automatically detects Kodi clients and provides optimized playlists:
+
+```m3u
+#KODIPROP:inputstream=inputstream.ffmpegdirect
+#KODIPROP:mimetype=video/mp2t
+#KODIPROP:inputstream.ffmpegdirect.open_mode=ffmpeg
+```
+
+1. Install **IPTV Simple Client** addon
+2. Configure M3U Playlist URL: `http://your-server:8409/iptv/channels.m3u`
+3. Configure EPG URL: `http://your-server:8409/iptv/xmltv.xml`
+4. Enable addon and reload
+
+### Plex Live TV
+
+<Steps>
+  <Step title="Add Tuner">
+    Navigate to **Settings > Live TV & DVR > Set Up Plex DVR**
+  </Step>
+  
+  <Step title="Enter M3U URL">
+    Enter the M3U playlist URL: `http://your-server:8409/iptv/channels.m3u`
+  </Step>
+  
+  <Step title="Configure EPG">
+    Enter the XMLTV URL: `http://your-server:8409/iptv/xmltv.xml`
+  </Step>
+  
+  <Step title="Complete Setup">
+    Follow the wizard to complete channel and guide configuration
+  </Step>
+</Steps>
+
+### Channels DVR
+
+Channels DVR can use ErsatzTV as a custom source:
+
+1. Add **Custom Channels** source
+2. Set M3U URL: `http://your-server:8409/iptv/channels.m3u`
+3. Set XMLTV URL: `http://your-server:8409/iptv/xmltv.xml`
+4. Refresh guide data
+
+<Note>
+For best compatibility with Channels DVR, use **Transport Stream Hybrid** mode.
+</Note>
+
+## Authentication
+
+When access tokens are configured, append the token to all requests:
+
+```
+?access_token=YOUR_TOKEN
+```
+
+<CodeGroup>
+```bash M3U with Token
+http://localhost:8409/iptv/channels.m3u?access_token=abc123
+```
+
+```bash Stream with Token
+http://localhost:8409/iptv/channel/1.ts?access_token=abc123
+```
+</CodeGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Channels not appearing in playlist">
+    - Verify channels are enabled in ErsatzTV
+    - Check that FFmpeg profiles are correctly configured
+    - Ensure channel numbers are properly assigned
+  </Accordion>
+  
+  <Accordion title="Playback stuttering or buffering">
+    - Try switching streaming modes (TS vs HLS)
+    - Check transcoding settings and hardware acceleration
+    - Verify network bandwidth is sufficient
+    - Consider adjusting bitrate settings
+  </Accordion>
+  
+  <Accordion title="EPG not loading in client">
+    - Verify XMLTV endpoint is accessible
+    - Check that program schedules are populated
+    - Try refreshing guide data in client
+  </Accordion>
+  
+  <Accordion title="Stream won't start or fails immediately">
+    - Check ErsatzTV logs for FFmpeg errors
+    - Verify source media is accessible
+    - Test with different streaming mode
+    - Ensure FFmpeg is properly installed
+  </Accordion>
+</AccordionGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="HDHomeRun" icon="tv" href="./hdhr">
+    Configure HDHomeRun protocol support
+  </Card>
+  
+  <Card title="Transcoding" icon="gears" href="./transcoding">
+    Configure FFmpeg transcoding profiles
+  </Card>
+  
+  <Card title="Hardware Acceleration" icon="microchip" href="./hardware-acceleration">
+    Enable GPU acceleration for transcoding
+  </Card>
+</CardGroup>

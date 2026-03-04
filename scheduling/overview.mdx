@@ -1,0 +1,180 @@
+---
+title: Scheduling Overview
+description: Understanding ErsatzTV's scheduling system architecture and schedule types
+---
+
+ErsatzTV provides a flexible scheduling system that controls when and how content plays on your channels. The scheduling engine supports multiple schedule types, each designed for different use cases.
+
+## Schedule Types
+
+ErsatzTV supports five different schedule types, defined in the `PlayoutScheduleKind` enum:
+
+<CardGroup cols={2}>
+  <Card title="Classic" icon="calendar" href="/scheduling/classic-schedules">
+    Time-slot based scheduling with fixed or dynamic start times
+  </Card>
+  <Card title="Block" icon="grid-2" href="/scheduling/block-schedules">
+    Template-based scheduling with reusable content blocks
+  </Card>
+  <Card title="Sequential" icon="list-ol" href="/scheduling/sequential-schedules">
+    YAML-defined schedules with precise instruction-based control
+  </Card>
+  <Card title="Scripted" icon="code" href="/scheduling/scripted-schedules">
+    JavaScript-based schedules for maximum flexibility
+  </Card>
+</CardGroup>
+
+## Scheduling Engine Architecture
+
+The scheduling system is built around the `ISchedulingEngine` interface (ErsatzTV.Core/Scheduling/Engine/SchedulingEngine.cs:15), which provides:
+
+### Content Management
+
+The engine supports multiple content sources:
+
+- **Collections** - Standard media collections with various playback orders
+- **Multi-Collections** - Aggregate multiple collections
+- **Smart Collections** - Dynamic collections based on queries
+- **Playlists** - Ordered playlist content
+- **Marathons** - Special grouping for binge-watching episodes
+- **Searches** - Ad-hoc search queries
+
+### Playback Orders
+
+ErsatzTV supports multiple playback orders (ErsatzTV.Core/Domain/PlaybackOrder.cs:4):
+
+<AccordionGroup>
+  <Accordion title="Chronological">
+    Plays content in chronological order (by season/episode for TV shows, by release date for movies)
+  </Accordion>
+  
+  <Accordion title="Random">
+    Randomly selects items from the collection with potential repeats
+  </Accordion>
+  
+  <Accordion title="Shuffle">
+    Plays all items in random order without repeats until the collection is exhausted
+  </Accordion>
+  
+  <Accordion title="ShuffleInOrder">
+    Shuffles episodes within seasons while maintaining season order
+  </Accordion>
+  
+  <Accordion title="MultiEpisodeShuffle">
+    Shuffles while keeping multi-part episodes together
+  </Accordion>
+  
+  <Accordion title="SeasonEpisode">
+    Plays content in season/episode order
+  </Accordion>
+  
+  <Accordion title="RandomRotation">
+    Randomly rotates through items with controlled distribution
+  </Accordion>
+  
+  <Accordion title="Marathon">
+    Special mode for marathon viewing with custom grouping
+  </Accordion>
+</AccordionGroup>
+
+### Content Instructions
+
+The scheduling engine supports several instruction types:
+
+- **AddAll** - Add all items from a content source
+- **AddCount** - Add a specific number of items
+- **AddDuration** - Add content until a duration is filled
+- **PadToNext** - Pad to the next time interval (e.g., next 30 minutes)
+- **PadUntil** - Pad until a specific time
+
+### Control Features
+
+<Steps>
+  <Step title="Guide Groups">
+    Lock/unlock EPG guide groups for custom program guide entries
+  </Step>
+  
+  <Step title="Graphics Elements">
+    Turn graphics overlays on/off during playback
+  </Step>
+  
+  <Step title="Watermarks">
+    Control channel watermark visibility
+  </Step>
+  
+  <Step title="Pre-Roll Content">
+    Enable pre-roll content before main items
+  </Step>
+  
+  <Step title="Navigation">
+    Skip items or jump to specific episodes
+  </Step>
+  
+  <Step title="Time Control">
+    Wait until specific times before continuing
+  </Step>
+</Steps>
+
+## Choosing a Schedule Type
+
+### Use Classic Schedules When:
+
+- You want a traditional TV schedule with time slots
+- You need simple scheduling with fixed or dynamic start times
+- You're comfortable with a web UI for configuration
+- You want to schedule different content at different times of day
+
+### Use Block Schedules When:
+
+- You want to create reusable content templates
+- You need to schedule the same pattern across multiple days
+- You want visual template-based scheduling
+- You need complex recurring patterns
+
+### Use Sequential Schedules When:
+
+- You need precise control over content ordering
+- You want human-readable YAML configuration
+- You need advanced features like sequences and loops
+- You want to version-control your schedules
+
+### Use Scripted Schedules When:
+
+- You need maximum flexibility and control
+- You want to implement custom logic in JavaScript
+- You need to make dynamic decisions based on runtime data
+- You're comfortable writing and debugging scripts
+
+## Build Modes
+
+Schedules can be built in two modes:
+
+<Card title="Continue Mode" icon="play">
+  Continues from where the schedule left off, preserving history and state
+</Card>
+
+<Card title="Reset Mode" icon="rotate-left">
+  Clears current items and rebuilds from the start time, removing active history
+</Card>
+
+## Schedule State Management
+
+The scheduling engine maintains state through `PlayoutAnchor` objects (ErsatzTV.Core/Scheduling/Engine/SchedulingEngine.cs:1208):
+
+- **NextStart** - The next start time for content
+- **Context** - Serialized state including enumerator positions, guide groups, and active settings
+
+This allows schedules to resume correctly after restarts or rebuilds.
+
+## History Tracking
+
+The scheduler tracks playback history (`PlayoutHistory`) to:
+
+- Remember position in collections
+- Avoid repeating content too soon
+- Support resuming playback after interruptions
+- Enable proper shuffle behavior
+
+<Note>
+  History is preserved during Continue builds but partially cleared during Reset builds to prevent schedules from "walking forward" on repeated resets.
+</Note>

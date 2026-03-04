@@ -1,0 +1,533 @@
+---
+title: Jellyfin Integration
+description: Connect ErsatzTV to your Jellyfin Media Server
+---
+
+Integrate ErsatzTV with Jellyfin to access your Jellyfin libraries and include them in custom channels. ErsatzTV synchronizes metadata and media information directly from your Jellyfin server.
+
+## Overview
+
+The Jellyfin integration enables ErsatzTV to:
+
+- Connect to Jellyfin servers via API
+- Synchronize movie and TV show libraries
+- Access metadata, artwork, and playback information
+- Handle path replacements for containerized environments
+- Support multiple Jellyfin servers
+
+## Authentication
+
+### API Key Authentication
+
+Jellyfin uses API key-based authentication for external applications:
+
+1. **Generate API Key**: Create an API key in Jellyfin dashboard
+2. **Save Credentials**: Provide server address and API key to ErsatzTV
+3. **Validate Connection**: ErsatzTV tests connection and retrieves server info
+4. **Sync Libraries**: Available libraries are discovered and synchronized
+
+<CodeGroup>
+```csharp SaveJellyfinSecretsHandler.cs
+public Task<Either<BaseError, Unit>> Handle(
+    SaveJellyfinSecrets request, 
+    CancellationToken cancellationToken) =>
+    Validate(request)
+        .MapT(PerformSave)
+        .Bind(v => v.ToEitherAsync());
+
+private async Task<Validation<BaseError, Parameters>> Validate(
+    SaveJellyfinSecrets request)
+{
+    var connectionParameters = new JellyfinConnectionParameters(
+        request.Secrets.Address, 
+        request.Secrets.ApiKey, 
+        0
+    );
+
+    Either<BaseError, JellyfinServerInformation> maybeServerInformation = 
+        await _jellyfinApiClient.GetServerInformation(
+            connectionParameters.Address, 
+            connectionParameters.AuthorizationHeader
+        );
+
+    return maybeServerInformation.Match(
+        info => Validation<BaseError, Parameters>.Success(
+            new Parameters(request.Secrets, info)
+        ),
+        error => error
+    );
+}
+```
+</CodeGroup>
+
+### Creating an API Key in Jellyfin
+
+<Steps>
+  <Step title="Open Jellyfin Dashboard">
+    Log in as an administrator and navigate to the Dashboard
+  </Step>
+  
+  <Step title="Navigate to API Keys">
+    Go to Advanced → API Keys
+  </Step>
+  
+  <Step title="Create New Key">
+    Click the "+" button to create a new API key
+  </Step>
+  
+  <Step title="Name the Application">
+    Enter "ErsatzTV" or a descriptive name for the integration
+  </Step>
+  
+  <Step title="Copy the Key">
+    Copy the generated API key - you won't be able to see it again
+  </Step>
+</Steps>
+
+### Connection Parameters
+
+Jellyfin requires:
+
+- **Server Address**: Full URL to your Jellyfin server (e.g., `http://jellyfin:8096`)
+- **API Key**: The API key generated in Jellyfin
+
+<CodeGroup>
+```csharp JellyfinConnectionParameters.cs
+public record JellyfinConnectionParameters(
+    string Address, 
+    string ApiKey, 
+    int MediaSourceId
+) : MediaServerConnectionParameters
+{
+    public string AuthorizationHeader => $"MediaBrowser Token={ApiKey}";
+}
+```
+</CodeGroup>
+
+<CodeGroup>
+```csharp JellyfinSecrets.cs
+public class JellyfinSecrets : RemoteMediaSourceSecrets
+{
+    public string Address { get; set; }  // e.g., "http://jellyfin:8096"
+    public string ApiKey { get; set; }   // API key from Jellyfin
+}
+```
+</CodeGroup>
+
+## Server Connection
+
+### Server Information
+
+When connecting, ErsatzTV retrieves server information:
+
+<CodeGroup>
+```csharp JellyfinApiClient.cs
+public async Task<Either<BaseError, JellyfinServerInformation>> 
+    GetServerInformation(
+        string address,
+        string authorizationHeader)
+{
+    try
+    {
+        IJellyfinApi service = ServiceForAddress(address);
+        var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(5));
+        
+        return await service.GetSystemInformation(
+                authorizationHeader, 
+                cts.Token
+            )
+            .Map(response => new JellyfinServerInformation(
+                response.ServerName, 
+                response.OperatingSystem
+            ));
+    }
+    catch (Exception ex) when (ex is TaskCanceledException or 
+                                    OperationCanceledException)
+    {
+        _logger.LogError(ex, "Timeout getting jellyfin server name");
+        return BaseError.New("Jellyfin did not respond in time");
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error getting jellyfin server name");
+        return BaseError.New(ex.Message);
+    }
+}
+```
+</CodeGroup>
+
+### Connection Validation
+
+The connection process includes:
+
+1. **Timeout Protection**: 5-second timeout for connection attempts
+2. **Error Handling**: Graceful handling of connection failures
+3. **Server Identity**: Captures server name and OS information
+4. **Media Source Creation**: Creates or updates Jellyfin media source record
+
+## Library Synchronization
+
+### Discovering Libraries
+
+ErsatzTV discovers Jellyfin libraries through the API:
+
+<CodeGroup>
+```csharp IJellyfinApiClient.cs
+public interface IJellyfinApiClient
+{
+    Task<Either<BaseError, JellyfinServerInformation>> GetServerInformation(
+        string address, 
+        string authorizationHeader);
+        
+    Task<Either<BaseError, List<JellyfinLibrary>>> GetLibraries(
+        string address, 
+        string authorizationHeader);
+
+    IAsyncEnumerable<Tuple<JellyfinMovie, int>> GetMovieLibraryItems(
+        string address,
+        string authorizationHeader,
+        JellyfinLibrary library);
+
+    IAsyncEnumerable<Tuple<JellyfinShow, int>> GetShowLibraryItemsWithoutPeople(
+        string address,
+        string authorizationHeader,
+        JellyfinLibrary library);
+}
+```
+</CodeGroup>
+
+<CodeGroup>
+```csharp JellyfinApiClient.cs
+public async Task<Either<BaseError, List<JellyfinLibrary>>> GetLibraries(
+    string address, 
+    string authorizationHeader)
+{
+    try
+    {
+        IJellyfinApi service = ServiceForAddress(address);
+        List<JellyfinLibraryResponse> libraries = 
+            await service.GetLibraries(authorizationHeader);
+        return libraries
+            .Map(Project)
+            .Somes()
+            .ToList();
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error getting jellyfin libraries");
+        return BaseError.New(ex.Message);
+    }
+}
+```
+</CodeGroup>
+
+### Supported Library Types
+
+ErsatzTV synchronizes:
+
+- **Movie Libraries**: All movie-type content
+- **TV Show Libraries**: Series with seasons and episodes
+- **Collections**: Jellyfin collections (playlists/smart collections)
+
+### Content Synchronization
+
+For each library type, ErsatzTV retrieves:
+
+#### Movies
+- Title, year, and sort title
+- Genres, studios, and tags
+- Ratings and content ratings
+- Poster and backdrop artwork
+- Media file information and codecs
+
+#### TV Shows
+- Show metadata and overview
+- Season information
+- Episode details with air dates
+- Actor, director, and writer information
+- Episode thumbnails and artwork
+
+#### Episodes
+<CodeGroup>
+```csharp IJellyfinApiClient.cs
+IAsyncEnumerable<Tuple<JellyfinSeason, int>> GetSeasonLibraryItems(
+    string address,
+    string authorizationHeader,
+    JellyfinLibrary library,
+    string showId);
+
+IAsyncEnumerable<Tuple<JellyfinEpisode, int>> GetEpisodeLibraryItems(
+    string address,
+    string authorizationHeader,
+    JellyfinLibrary library,
+    string seasonId);
+```
+</CodeGroup>
+
+### Pagination Strategy
+
+ErsatzTV uses efficient pagination for large libraries:
+
+<CodeGroup>
+```csharp JellyfinApiClient.cs
+public IAsyncEnumerable<Tuple<JellyfinMovie, int>> GetMovieLibraryItems(
+    string address,
+    string authorizationHeader,
+    JellyfinLibrary library) =>
+    GetPagedLibraryItems(
+        "JF Movies",
+        address,
+        library,
+        library.MediaSourceId,
+        library.ItemId,
+        (service, itemId, skip, pageSize) => service.GetMovieLibraryItems(
+            authorizationHeader,
+            itemId,
+            startIndex: skip,
+            limit: pageSize),
+        (maybeLibrary, item) => maybeLibrary
+            .Map(lib => ProjectToMovie(lib, item))
+            .Flatten());
+```
+</CodeGroup>
+
+- **Streaming Results**: Uses `IAsyncEnumerable` for memory efficiency
+- **Configurable Page Size**: Adjustable batch sizes for API requests
+- **Progress Tracking**: Returns item counts for progress reporting
+
+## Metadata and Playback
+
+### Playback Information
+
+ErsatzTV retrieves detailed playback info for each media item:
+
+<CodeGroup>
+```csharp IJellyfinApiClient.cs
+Task<Either<BaseError, MediaVersion>> GetPlaybackInfo(
+    string address,
+    string authorizationHeader,
+    JellyfinLibrary library,
+    string itemId);
+```
+</CodeGroup>
+
+Playback info includes:
+- Media streams (video, audio, subtitles)
+- Codecs and bitrates
+- Resolution and aspect ratio
+- Duration and file size
+
+### Metadata Caching
+
+ErsatzTV uses memory caching to improve performance:
+
+- **Connection Parameters**: Cached to avoid repeated lookups
+- **Server Information**: Stored for quick access
+- **Library Metadata**: Temporarily cached during sync operations
+
+## Path Replacements
+
+Path replacements handle scenarios where Jellyfin and ErsatzTV see different paths to the same files.
+
+### Common Scenarios
+
+<CardGroup cols={2}>
+  <Card title="Docker Containers" icon="docker">
+    Different mount points between containers
+  </Card>
+  <Card title="Network Paths" icon="network-wired">
+    SMB/NFS shares with different mount locations
+  </Card>
+  <Card title="Platform Differences" icon="computer">
+    Windows paths vs Linux paths
+  </Card>
+  <Card title="Remote Access" icon="cloud">
+    Server paths vs client paths
+  </Card>
+</CardGroup>
+
+### Configuring Path Replacements
+
+<CodeGroup>
+```csharp UpdateJellyfinPathReplacements.cs
+public record UpdateJellyfinPathReplacements(
+    int JellyfinMediaSourceId,
+    List<JellyfinPathReplacementItem> PathReplacements
+) : IRequest<Either<BaseError, Unit>>;
+
+public record JellyfinPathReplacementItem(
+    int Id, 
+    string JellyfinPath, 
+    string LocalPath
+);
+```
+</CodeGroup>
+
+### Example Configurations
+
+<CodeGroup>
+```yaml Docker Compose Example
+services:
+  jellyfin:
+    volumes:
+      - /mnt/media:/media
+  
+  ersatztv:
+    volumes:
+      - /mnt/media:/data/media
+
+# Path Replacement:
+# Jellyfin Path: /media/movies
+# Local Path: /data/media/movies
+```
+
+```yaml Network Share Example
+# Jellyfin sees: /mnt/nas/Movies
+# ErsatzTV sees: /media/movies
+
+path_replacements:
+  - jellyfin_path: "/mnt/nas/Movies"
+    local_path: "/media/movies"
+```
+
+```yaml Windows to Linux Example
+# Jellyfin Path: C:\\Media\\Shows
+# Local Path: /mnt/media/shows
+
+path_replacements:
+  - jellyfin_path: "C:\\Media\\Shows"
+    local_path: "/mnt/media/shows"
+```
+</CodeGroup>
+
+## Collections
+
+ErsatzTV can synchronize Jellyfin collections:
+
+<CodeGroup>
+```csharp IJellyfinApiClient.cs
+IAsyncEnumerable<Tuple<JellyfinCollection, int>> GetCollectionLibraryItems(
+    string address,
+    string authorizationHeader,
+    int mediaSourceId);
+
+IAsyncEnumerable<Tuple<MediaItem, int>> GetCollectionItems(
+    string address,
+    string authorizationHeader,
+    int mediaSourceId,
+    string collectionId);
+```
+</CodeGroup>
+
+### Collection Types
+
+- **Standard Collections**: Manually curated groups
+- **Smart Collections**: Dynamic collections based on filters
+- **Boxsets**: Movie series and franchises
+
+## Library Preferences
+
+Customize how each Jellyfin library is managed:
+
+- **Automatic Sync**: Enable/disable periodic synchronization
+- **Metadata Updates**: Control which metadata fields to sync
+- **Collection Sync**: Choose which collections to import
+
+## Disconnecting from Jellyfin
+
+To remove a Jellyfin connection:
+
+1. **Stop Synchronization**: Halts all active sync operations
+2. **Clear Secrets**: Removes stored API key and address
+3. **Preserve Media**: Option to keep or remove synced content
+4. **Clean Search Index**: Updates search index as needed
+
+<Warning>
+Disconnecting removes access to Jellyfin libraries but can optionally preserve already-synced content in channels.
+</Warning>
+
+## Troubleshooting
+
+### Connection Issues
+
+<AccordionGroup>
+  <Accordion title="Cannot Connect to Server">
+    - Verify Jellyfin server is running
+    - Check server address format (include http:// or https://)
+    - Ensure port is correct (default: 8096)
+    - Test network connectivity from ErsatzTV host
+  </Accordion>
+  
+  <Accordion title="Invalid API Key">
+    - Verify API key was copied correctly
+    - Check API key hasn't been revoked in Jellyfin
+    - Ensure API key has necessary permissions
+    - Generate a new API key if needed
+  </Accordion>
+  
+  <Accordion title="Timeout Errors">
+    - Increase timeout settings if on slow network
+    - Check for firewall blocking connections
+    - Verify Jellyfin server isn't overloaded
+  </Accordion>
+</AccordionGroup>
+
+### Synchronization Issues
+
+<AccordionGroup>
+  <Accordion title="Libraries Not Syncing">
+    - Verify API key has access to libraries
+    - Check Jellyfin library permissions
+    - Review ErsatzTV logs for errors
+    - Manually trigger library sync
+  </Accordion>
+  
+  <Accordion title="Missing Metadata">
+    - Ensure Jellyfin has scraped metadata
+    - Verify artwork is accessible
+    - Check metadata provider configuration
+    - Re-scan library in Jellyfin first
+  </Accordion>
+  
+  <Accordion title="Path Issues">
+    - Configure path replacements correctly
+    - Verify file paths are accessible to ErsatzTV
+    - Check mount points in Docker environments
+    - Test file access permissions
+  </Accordion>
+</AccordionGroup>
+
+### Performance Optimization
+
+<AccordionGroup>
+  <Accordion title="Slow Synchronization">
+    - Reduce library scan frequency
+    - Sync only changed items when possible
+    - Check network bandwidth between servers
+    - Ensure Jellyfin server has adequate resources
+  </Accordion>
+  
+  <Accordion title="High Memory Usage">
+    - Pagination helps but very large libraries may need tuning
+    - Reduce concurrent sync operations
+    - Clear cached data periodically
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plex Integration" icon="play" href="/media-sources/plex">
+    Also connect to Plex servers
+  </Card>
+  <Card title="Emby Integration" icon="film" href="/media-sources/emby">
+    Add Emby as another source
+  </Card>
+  <Card title="Local Libraries" icon="folder" href="/media-sources/local-libraries">
+    Supplement with local media
+  </Card>
+  <Card title="Create Channels" icon="tv" href="/essentials/channels">
+    Build channels from Jellyfin content
+  </Card>
+</CardGroup>

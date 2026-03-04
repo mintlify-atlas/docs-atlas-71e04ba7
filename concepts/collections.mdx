@@ -1,0 +1,361 @@
+---
+title: 'Collections'
+description: 'Understanding collections and how they organize media in ErsatzTV'
+---
+
+## What is a collection?
+
+Collections are groups of media items that can be scheduled to play on channels. They provide a way to organize and categorize your media library for scheduling purposes.
+
+## Collection types
+
+ErsatzTV supports several types of collections, each serving different organizational purposes:
+
+### Standard collections
+
+Manual collections where you explicitly add media items. Standard collections:
+
+- Contain a curated list of media items
+- Support custom playback ordering
+- Can include any combination of media types
+- Are the most commonly used collection type
+
+```csharp
+Collection
+  Name = "Action Movies"
+  UseCustomPlaybackOrder = true
+  MediaItems = [...]
+```
+
+### Smart collections
+
+Dynamic collections based on search queries. Smart collections automatically include media matching specific criteria:
+
+- **Query** - A search expression that defines collection membership
+- Automatically update as media is added or removed
+- No manual item management required
+
+```csharp
+SmartCollection
+  Name = "Recent Movies"
+  Query = "kind:movie AND year:>2020"
+```
+
+<Tip>
+Smart collections are powerful for creating dynamic schedules that automatically include new content matching your criteria.
+</Tip>
+
+### Multi-collections
+
+Multi-collections aggregate multiple standard collections and smart collections into a single scheduling source:
+
+- Combine multiple collections
+- Mix standard and smart collections
+- Useful for creating category-based schedules
+
+```csharp
+MultiCollection
+  Name = "All Sci-Fi"
+  Collections = [Collection1, Collection2]
+  SmartCollections = [SmartCollection1]
+```
+
+### Natural collections
+
+Certain media types have natural collection groupings:
+
+- **TelevisionShow** - All episodes of a TV show
+- **TelevisionSeason** - All episodes in a season
+- **Artist** - All content by a music artist
+
+These collections are automatically created based on media metadata.
+
+### Rerun collections
+
+Special collections for managing first-run vs. rerun scheduling:
+
+- **RerunFirstRun** - Content that hasn't aired recently
+- **RerunRerun** - Content that has aired recently
+
+Rerun collections work with playout history to automatically categorize content.
+
+### Search queries
+
+Direct search queries can be used as temporary collections:
+
+- **SearchQuery** - Dynamic collection based on a search expression
+- No persistent collection object
+- Evaluated at schedule time
+
+### Playlists
+
+Playlists are ordered sequences of media items:
+
+- **Playlist** - A manually ordered list of media
+- Maintains specific playback order
+- Can include items from any source
+
+### Individual media types
+
+Schedule items can also reference individual media types directly:
+
+- **Movie** - A single movie
+- **Episode** - A single TV episode
+- **MusicVideo** - A single music video
+- **OtherVideo** - Other video content
+- **Song** - A single song
+- **Image** - A single image
+- **RemoteStream** - A remote streaming source
+
+These are treated as single-item collections when scheduled.
+
+## Collection properties
+
+### Name
+
+Every collection has a name for identification:
+
+```csharp
+Name = "Saturday Morning Cartoons"
+```
+
+### Custom playback order
+
+Standard collections can specify custom playback ordering:
+
+```csharp
+UseCustomPlaybackOrder = true
+```
+
+When enabled, items play in the order specified by the collection items list.
+
+### Collection items
+
+Standard collections maintain an explicit list of items:
+
+- **MediaItems** - Direct list of media items
+- **CollectionItems** - Join table entries with ordering information
+
+The collection items table maintains the many-to-many relationship and optional custom ordering.
+
+### Multi-collection members
+
+Multi-collections reference their constituent collections:
+
+- **Collections** - List of standard collections
+- **SmartCollections** - List of smart collections
+- **MultiCollectionItems** - Join table for collections
+- **MultiCollectionSmartItems** - Join table for smart collections
+
+## Using collections in schedules
+
+Collections are referenced by schedule items using the collection type and ID:
+
+```csharp
+ProgramScheduleItem
+  CollectionType = CollectionType.Collection
+  CollectionId = 5
+  PlaybackOrder = PlaybackOrder.Shuffle
+```
+
+The schedule item's `CollectionType` determines which collection property to use:
+
+<CodeGroup>
+
+```csharp Standard collection
+CollectionType = CollectionType.Collection
+CollectionId = 5
+```
+
+```csharp Smart collection
+CollectionType = CollectionType.SmartCollection
+SmartCollectionId = 3
+```
+
+```csharp Multi-collection
+CollectionType = CollectionType.MultiCollection
+MultiCollectionId = 2
+```
+
+```csharp TV show
+CollectionType = CollectionType.TelevisionShow
+MediaItemId = 100  // Show ID
+```
+
+```csharp Playlist
+CollectionType = CollectionType.Playlist
+PlaylistId = 7
+```
+
+</CodeGroup>
+
+## Playback order
+
+When a collection is scheduled, the playback order determines how items are selected:
+
+### Chronological
+
+Play items in chronological or release date order:
+
+```csharp
+PlaybackOrder = PlaybackOrder.Chronological
+```
+
+Useful for TV series, movie franchises, and dated content.
+
+### Random
+
+Completely random selection with no memory:
+
+```csharp
+PlaybackOrder = PlaybackOrder.Random
+```
+
+Each item is randomly selected, including recently played items.
+
+### Shuffle
+
+Randomized order, but all items play before repeating:
+
+```csharp
+PlaybackOrder = PlaybackOrder.Shuffle
+```
+
+Ensures variety without immediate repetition.
+
+<Info>
+Shuffle mode remembers which items have played and won't repeat them until all items have played once.
+</Info>
+
+### Shuffle in order
+
+Shuffle while keeping shows together:
+
+```csharp
+PlaybackOrder = PlaybackOrder.ShuffleInOrder
+```
+
+Shuffles TV shows but plays episodes of each show in order.
+
+### Multi-episode shuffle
+
+Shuffle with multi-part episode grouping:
+
+```csharp
+PlaybackOrder = PlaybackOrder.MultiEpisodeShuffle
+```
+
+Keeps multi-part episodes together while shuffling.
+
+### Season episode
+
+Strict season and episode order:
+
+```csharp
+PlaybackOrder = PlaybackOrder.SeasonEpisode
+```
+
+Always plays in season order, then episode order within each season.
+
+### Random rotation
+
+Rotate through items randomly:
+
+```csharp
+PlaybackOrder = PlaybackOrder.RandomRotation
+```
+
+Distributes random selection across the collection evenly.
+
+### Marathon
+
+Special marathon mode with grouping:
+
+```csharp
+PlaybackOrder = PlaybackOrder.Marathon
+MarathonGroupBy = MarathonGroupBy.Show
+MarathonShuffleGroups = true
+MarathonShuffleItems = false
+MarathonBatchSize = 10
+```
+
+Creates marathon viewing experiences with customizable grouping and shuffling.
+
+## Collection enumeration
+
+When the playout builder processes a schedule item, it enumerates the collection to get media items:
+
+1. The collection type and ID are resolved
+2. Media items are retrieved from the database
+3. The playback order is applied to determine sequencing
+4. Items are returned one at a time as the schedule is built
+5. State is maintained for stateful playback orders (shuffle, chronological)
+
+The enumeration process supports:
+
+- Continuation across schedule rebuilds
+- Randomization with seed control
+- Multi-part episode detection
+- Custom collection ordering
+
+## Collection state
+
+For stateful playback orders (shuffle, chronological), state is maintained:
+
+- **CollectionEnumeratorState** - Tracks position in the collection
+- **CollectionKey** - Unique identifier for the collection/schedule pairing
+- **CollectionEtag** - Version identifier for cache invalidation
+
+State allows the playout to resume where it left off after rebuilds.
+
+## Fake collections
+
+Schedule items can create temporary "fake" collections:
+
+- **FakeCollection** - Ad-hoc collection for special cases
+- **FakePlaylistItem** - Temporary playlist-like structure
+
+These are used internally by the scheduling engine for certain operations.
+
+## Smart collection queries
+
+Smart collection queries use a search syntax to define membership:
+
+```
+kind:movie AND year:>2020 AND genre:Action
+```
+
+Supported search criteria include:
+
+- Media kind (movie, episode, etc.)
+- Release year
+- Genre and tags
+- Title and metadata
+- Rating and popularity
+- Library source
+
+See the search documentation for complete query syntax.
+
+## Collection relationships
+
+Collections relate to other entities:
+
+```
+Collection → MediaItems
+SmartCollection → (Dynamic Query) → MediaItems
+MultiCollection → Collections + SmartCollections → MediaItems
+ScheduleItem → Collection → MediaItems → PlayoutItems
+```
+
+This hierarchy allows flexible content organization and scheduling.
+
+## Managing collections
+
+Collections are managed through:
+
+- The web interface for manual creation and editing
+- The API for programmatic management
+- Automatic creation from media library scans
+- Smart collection queries that update automatically
+
+Collections form the foundation of content organization in ErsatzTV, bridging your media library and channel schedules.

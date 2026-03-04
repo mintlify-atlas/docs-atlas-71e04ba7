@@ -1,0 +1,306 @@
+---
+title: Block Schedules
+description: Template-based scheduling with reusable content blocks
+---
+
+Block schedules provide a template-based approach to scheduling where you define reusable content blocks and then schedule them across days and times using templates. This is ideal for creating repeating patterns and complex weekly schedules.
+
+## Architecture
+
+Block scheduling uses three main components:
+
+<Steps>
+  <Step title="Block Groups">
+    Organize related blocks together
+  </Step>
+  <Step title="Blocks">
+    Define content and duration
+  </Step>
+  <Step title="Templates">
+    Schedule when blocks play
+  </Step>
+</Steps>
+
+## Block Groups
+
+The `BlockGroup` model (ErsatzTV.Core/Domain/Scheduling/BlockGroup.cs:3) is a simple container:
+
+<ParamField path="Name" type="string" required>
+  The name of the block group
+</ParamField>
+
+<ParamField path="Blocks" type="List<Block>">
+  All blocks in this group
+</ParamField>
+
+## Blocks
+
+The `Block` model (ErsatzTV.Core/Domain/Scheduling/Block.cs:3) defines a content block:
+
+<ParamField path="Name" type="string" required>
+  The name of this block
+</ParamField>
+
+<ParamField path="Minutes" type="int" required>
+  How long this block should run (in minutes)
+</ParamField>
+
+<ParamField path="StopScheduling" type="BlockStopScheduling">
+  When to stop adding content to this block:
+  
+  - `AfterDurationEnd` (0) - Allow content to extend past block duration
+  - `BeforeDurationEnd` (1) - Stop before block end, don't start items that won't fit
+</ParamField>
+
+<ParamField path="Items" type="List<BlockItem>">
+  The content items in this block
+</ParamField>
+
+<ParamField path="DateUpdated" type="DateTime">
+  Last modification time (used for change detection)
+</ParamField>
+
+### Block Items
+
+Each block contains `BlockItem` objects (ErsatzTV.Core/Domain/Scheduling/BlockItem.cs:3):
+
+<ParamField path="Index" type="int" required>
+  Order of this item within the block
+</ParamField>
+
+<ParamField path="CollectionType" type="enum" required>
+  Type of collection (Collection, MultiCollection, SmartCollection)
+</ParamField>
+
+<ParamField path="PlaybackOrder" type="PlaybackOrder" required>
+  How to order content. Block schedules support:
+  
+  - Chronological
+  - SeasonEpisode
+  - Shuffle
+  - Random
+  - RandomRotation
+</ParamField>
+
+<ParamField path="IncludeInProgramGuide" type="boolean" default={true}>
+  Whether this item should appear in the EPG guide
+</ParamField>
+
+<ParamField path="DisableWatermarks" type="boolean" default={false}>
+  Disable channel watermarks for this block item
+</ParamField>
+
+<ParamField path="Watermarks" type="List<ChannelWatermark>">
+  Custom watermarks for this block item
+</ParamField>
+
+<ParamField path="GraphicsElements" type="List<GraphicsElement>">
+  Graphics overlays for this block item
+</ParamField>
+
+### Content Sources
+
+Block items support the same content sources as classic schedules:
+
+- `CollectionId` - Standard collection
+- `MediaItemId` - Single media item
+- `MultiCollectionId` - Multi-collection
+- `SmartCollectionId` - Smart collection
+- `SearchQuery` - Ad-hoc search
+
+## Templates
+
+Templates schedule when blocks play. The `Template` model (ErsatzTV.Core/Domain/Scheduling/Template.cs:3) contains:
+
+<ParamField path="Name" type="string" required>
+  The name of this template
+</ParamField>
+
+<ParamField path="TemplateGroup" type="TemplateGroup" required>
+  The group this template belongs to
+</ParamField>
+
+<ParamField path="Items" type="List<TemplateItem>">
+  The scheduled blocks in this template
+</ParamField>
+
+<ParamField path="DateUpdated" type="DateTime">
+  Last modification time
+</ParamField>
+
+Templates are assigned to channels via `PlayoutTemplate` objects, which can specify date ranges and days of the week.
+
+## Block Scheduling Engine
+
+The `BlockPlayoutBuilder` (ErsatzTV.Core/Scheduling/BlockScheduling/BlockPlayoutBuilder.cs:16) builds block-based playouts:
+
+### Build Process
+
+<Steps>
+  <Step title="Calculate Effective Blocks">
+    Determine which blocks should play based on templates and date/time
+  </Step>
+  
+  <Step title="Load Collection Items">
+    Retrieve all media items for collections referenced in blocks
+  </Step>
+  
+  <Step title="Change Detection">
+    Detect if blocks or collections have changed since last build
+  </Step>
+  
+  <Step title="Build Playout Items">
+    Create playout items for each block, respecting block duration and stop scheduling mode
+  </Step>
+  
+  <Step title="Apply History">
+    Resume collection enumerators from saved history
+  </Step>
+</Steps>
+
+### Supported Playback Orders
+
+Block schedules support these playback orders (ErsatzTV.Core/Scheduling/BlockScheduling/BlockPlayoutBuilder.cs:54):
+
+- **Chronological** - Play in chronological order
+- **SeasonEpisode** - Play by season/episode order
+- **Shuffle** - Shuffle all items
+- **Random** - Random selection
+- **RandomRotation** - Controlled random rotation
+
+<Warning>
+  Other playback orders are not currently supported in block schedules and will be skipped with a warning.
+</Warning>
+
+## Change Detection
+
+Block schedules use smart change detection (ErsatzTV.Core/Scheduling/BlockScheduling/BlockPlayoutChangeDetection.cs):
+
+### Block Keys
+
+Each playout item is tagged with a `BlockKey` containing:
+
+- Template ID
+- Block ID
+- Block item index
+- Scheduled date/time
+
+### ETags
+
+Collections are tracked with ETags that change when:
+
+- Collection contents change
+- Media items are added/removed
+- Item order changes
+
+### Update Detection
+
+The system detects updates when:
+
+- A block's DateUpdated timestamp changes
+- A template's DateUpdated timestamp changes
+- A collection's ETag changes
+- Block duration changes
+- Block stop scheduling mode changes
+
+When changes are detected, only affected playout items are rebuilt, preserving history for unchanged blocks.
+
+## Example Configuration
+
+### Define Blocks
+
+<CodeGroup>
+```json Morning Block
+{
+  "Name": "Morning News",
+  "Minutes": 120,
+  "StopScheduling": 1,
+  "Items": [
+    {
+      "Index": 0,
+      "CollectionId": 1,
+      "PlaybackOrder": 1,
+      "IncludeInProgramGuide": true
+    }
+  ]
+}
+```
+
+```json Primetime Block
+{
+  "Name": "Primetime Shows",
+  "Minutes": 180,
+  "StopScheduling": 0,
+  "Items": [
+    {
+      "Index": 0,
+      "CollectionId": 5,
+      "PlaybackOrder": 1,
+      "IncludeInProgramGuide": true
+    },
+    {
+      "Index": 1,
+      "CollectionId": 6,
+      "PlaybackOrder": 3,
+      "IncludeInProgramGuide": true
+    }
+  ]
+}
+```
+</CodeGroup>
+
+### Create Template
+
+Templates define when blocks play:
+
+- **Monday-Friday 06:00** - Morning News block
+- **Monday-Friday 20:00** - Primetime Shows block
+- **Saturday-Sunday 10:00** - Weekend Movies block
+
+## Effective Blocks
+
+The `EffectiveBlock` class calculates which blocks should play at which times based on:
+
+- Template schedule (days of week, times)
+- Date ranges (start/end dates)
+- Time zones
+- Number of days to build
+
+## History Tracking
+
+Block schedules track history per block item using the key format:
+
+```
+BlockItem|{BlockId}|{BlockItemId}
+```
+
+This allows each block item to maintain its own position in its collection, enabling proper resumption when the same block plays multiple times.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Descriptive Names">
+    Name blocks and templates clearly to make schedules easy to understand at a glance.
+  </Accordion>
+  
+  <Accordion title="Set Appropriate Durations">
+    Make block durations match your typical content length patterns to avoid gaps.
+  </Accordion>
+  
+  <Accordion title="Choose Stop Scheduling Mode Carefully">
+    - Use `BeforeDurationEnd` for strict time blocks (news hours)
+    - Use `AfterDurationEnd` for flexible blocks (movie blocks)
+  </Accordion>
+  
+  <Accordion title="Organize with Block Groups">
+    Group related blocks together (e.g., "News Blocks", "Entertainment Blocks") for easier management.
+  </Accordion>
+  
+  <Accordion title="Test Templates Thoroughly">
+    Use the preview feature to verify your templates schedule blocks as expected before going live.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Block schedules automatically handle daylight saving time transitions and time zone changes through the effective block calculation system.
+</Note>

@@ -1,0 +1,679 @@
+---
+title: Hardware Acceleration
+description: Enable GPU-accelerated encoding and decoding for improved transcoding performance
+---
+
+Hardware acceleration offloads video encoding and decoding to dedicated GPU hardware, dramatically reducing CPU usage and enabling higher quality streams or more concurrent transcodes.
+
+## Supported Acceleration Types
+
+ErsatzTV supports multiple hardware acceleration platforms:
+
+<CardGroup cols={2}>
+  <Card title="NVENC" icon="microchip">
+    **NVIDIA GPU Acceleration**
+    
+    - GeForce, Quadro, Tesla GPUs
+    - H.264, HEVC, AV1 encoding
+    - Excellent performance
+    - Windows, Linux support
+  </Card>
+  
+  <Card title="QSV" icon="memory">
+    **Intel Quick Sync Video**
+    
+    - Intel CPUs with integrated GPU
+    - H.264, HEVC, AV1, MPEG-2
+    - Low power consumption
+    - Windows, Linux support
+  </Card>
+  
+  <Card title="VAAPI" icon="server">
+    **Video Acceleration API**
+    
+    - Intel, AMD GPUs (Linux)
+    - H.264, HEVC, MPEG-2
+    - Native Linux integration
+    - Low overhead
+  </Card>
+  
+  <Card title="AMF" icon="computer">
+    **AMD Advanced Media Framework**
+    
+    - AMD Radeon GPUs
+    - H.264, HEVC encoding
+    - Windows, Linux support
+    - VCE/VCN hardware
+  </Card>
+  
+  <Card title="VideoToolbox" icon="apple">
+    **Apple VideoToolbox**
+    
+    - macOS, iOS devices
+    - H.264, HEVC encoding
+    - Native Apple Silicon support
+    - Low power usage
+  </Card>
+  
+  <Card title="V4L2M2M" icon="raspberry-pi">
+    **Video4Linux Memory-to-Memory**
+    
+    - Raspberry Pi
+    - H.264 encoding
+    - Broadcom VideoCore
+    - ARM hardware
+  </Card>
+</CardGroup>
+
+## Hardware Acceleration Types
+
+Defined in `HardwareAccelerationKind` enum:
+
+```csharp
+public enum HardwareAccelerationKind
+{
+    None = 0,      // Software encoding only
+    Qsv = 1,       // Intel Quick Sync Video
+    Nvenc = 2,     // NVIDIA NVENC
+    Vaapi = 3,     // Video Acceleration API (Linux)
+    VideoToolbox = 4, // Apple VideoToolbox
+    Amf = 5,       // AMD Advanced Media Framework
+    V4l2m2m = 6,   // Video4Linux (Raspberry Pi)
+    Rkmpp = 7      // Rockchip Media Process Platform
+}
+```
+
+## NVIDIA NVENC
+
+### Requirements
+
+- **GPU**: GeForce GTX 600 series or newer, Quadro K series or newer
+- **Drivers**: Latest NVIDIA drivers
+- **CUDA**: CUDA Toolkit (optional, but recommended)
+- **OS**: Windows 10/11, Linux (Ubuntu, Debian, etc.)
+
+### Supported Codecs
+
+<ResponseField name="H.264" type="codec">
+  All NVENC-capable GPUs support H.264/AVC encoding
+</ResponseField>
+
+<ResponseField name="HEVC" type="codec">
+  GTX 950 and newer (Maxwell GM206+)
+  
+  10-bit HEVC requires GTX 1050 Ti or newer
+</ResponseField>
+
+<ResponseField name="AV1" type="codec">
+  RTX 40 series (Ada Lovelace) only
+  
+  Requires recent FFmpeg with AV1 NVENC support
+</ResponseField>
+
+### Setup on Linux
+
+<Steps>
+  <Step title="Install NVIDIA Drivers">
+    ```bash
+    sudo apt update
+    sudo apt install nvidia-driver-535
+    ```
+  </Step>
+  
+  <Step title="Verify GPU Detection">
+    ```bash
+    nvidia-smi
+    ```
+    
+    Should display GPU information
+  </Step>
+  
+  <Step title="Test NVENC Support">
+    ```bash
+    ffmpeg -f lavfi -i testsrc -t 10 -c:v h264_nvenc -f null -
+    ```
+  </Step>
+  
+  <Step title="Configure ErsatzTV">
+    In FFmpeg profile, set **Hardware Acceleration** to **NVENC**
+  </Step>
+</Steps>
+
+### Setup on Windows
+
+<Steps>
+  <Step title="Install GPU Drivers">
+    Download and install latest drivers from NVIDIA website
+  </Step>
+  
+  <Step title="Verify Installation">
+    Open NVIDIA Control Panel and verify GPU is detected
+  </Step>
+  
+  <Step title="Test NVENC">
+    ```powershell
+    ffmpeg -f lavfi -i testsrc -t 10 -c:v h264_nvenc -f null NUL
+    ```
+  </Step>
+  
+  <Step title="Enable in ErsatzTV">
+    Set Hardware Acceleration to NVENC in FFmpeg profile
+  </Step>
+</Steps>
+
+### NVENC Configuration
+
+FFmpeg pipeline automatically handles:
+
+- **Hardware decode**: CUVID decoder for hardware accelerated decoding
+- **Hardware filters**: CUDA-based scaling, deinterlacing
+- **Hardware encode**: NVENC encoder
+- **Tonemap**: Vulkan-based HDR to SDR conversion (if supported)
+
+**Example Pipeline:**
+
+```bash
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda \
+  -i input.mkv \
+  -vf "scale_cuda=1920:1080" \
+  -c:v h264_nvenc -preset fast -b:v 6000k \
+  -c:a aac -b:a 192k \
+  output.ts
+```
+
+### NVENC Limitations
+
+<Warning>
+**Consumer GPU Restrictions:**
+
+GeForce GPUs are limited to **3 concurrent NVENC sessions**. This limit can restrict the number of simultaneous transcodes.
+
+**Workarounds:**
+- Use Quadro/Tesla GPUs (no session limit)
+- Apply NVENC unlock patch (unsupported, use at own risk)
+- Distribute load across multiple systems
+</Warning>
+
+## Intel Quick Sync Video (QSV)
+
+### Requirements
+
+- **CPU**: Intel 2nd Gen (Sandy Bridge) or newer with integrated GPU
+- **Drivers**: Latest Intel graphics drivers
+- **OS**: Windows 10/11, Linux
+
+### Supported Codecs
+
+<ResponseField name="H.264" type="codec">
+  2nd Gen Core and newer (Sandy Bridge+)
+</ResponseField>
+
+<ResponseField name="HEVC" type="codec">
+  6th Gen Core and newer (Skylake+)
+  
+  10-bit HEVC: 10th Gen Core+ (Ice Lake+)
+</ResponseField>
+
+<ResponseField name="AV1" type="codec">
+  12th Gen Core and newer (Alder Lake+)
+  
+  AV1 encode only (no decode)
+</ResponseField>
+
+<ResponseField name="MPEG-2" type="codec">
+  2nd Gen Core and newer
+</ResponseField>
+
+<ResponseField name="VP9" type="codec">
+  9th Gen Core and newer (Coffee Lake Refresh+)
+</ResponseField>
+
+### Setup on Linux
+
+<Steps>
+  <Step title="Install Intel Media Driver">
+    ```bash
+    sudo apt update
+    sudo apt install intel-media-va-driver-non-free
+    ```
+  </Step>
+  
+  <Step title="Verify Device Access">
+    ```bash
+    ls -la /dev/dri/renderD*
+    ```
+    
+    Ensure user has access to `/dev/dri/renderD128`
+  </Step>
+  
+  <Step title="Add User to Video Group">
+    ```bash
+    sudo usermod -a -G video ersatztv
+    sudo usermod -a -G render ersatztv
+    ```
+  </Step>
+  
+  <Step title="Test QSV Support">
+    ```bash
+    vainfo --display drm --device /dev/dri/renderD128
+    ```
+    
+    Should list supported profiles
+  </Step>
+  
+  <Step title="Configure ErsatzTV Profile">
+    - **Hardware Acceleration**: QSV
+    - **VAAPI Device**: `/dev/dri/renderD128`
+    - **QSV Extra Hardware Frames**: 64 (default)
+  </Step>
+</Steps>
+
+### Setup on Windows
+
+<Steps>
+  <Step title="Install Intel Graphics Drivers">
+    Download from Intel website or use Windows Update
+  </Step>
+  
+  <Step title="Verify QSV Detection">
+    ```powershell
+    ffmpeg -hide_banner -encoders | findstr qsv
+    ```
+  </Step>
+  
+  <Step title="Enable in ErsatzTV">
+    Set Hardware Acceleration to QSV
+  </Step>
+</Steps>
+
+### QSV Configuration
+
+<ParamField body="VaapiDevice" type="string" default="/dev/dri/renderD128">
+  Device path for QSV/VAAPI (Linux only)
+</ParamField>
+
+<ParamField body="QsvExtraHardwareFrames" type="integer" default="64">
+  Extra hardware frames for QSV frame pool
+  
+  Increase if experiencing "cannot allocate memory" errors.
+</ParamField>
+
+**Example Pipeline:**
+
+```bash
+ffmpeg -hwaccel qsv -hwaccel_output_format qsv \
+  -c:v h264_qsv -i input.mkv \
+  -vf "vpp_qsv=w=1920:h=1080" \
+  -c:v h264_qsv -preset fast -b:v 6000k \
+  -c:a aac -b:a 192k \
+  output.ts
+```
+
+### QSV Limitations
+
+<Info>
+**10-bit Decoder Issues:**
+
+QSV hardware decoders for 10-bit H.264/HEVC content can have stability issues. ErsatzTV automatically falls back to software decoding in these cases.
+</Info>
+
+## VAAPI (Linux)
+
+### Requirements
+
+- **OS**: Linux (Ubuntu, Debian, Fedora, etc.)
+- **GPU**: Intel or AMD with VAAPI support
+- **Drivers**: Mesa drivers or proprietary AMD drivers
+
+### Drivers
+
+<ParamField body="VaapiDriver" type="enum">
+  VAAPI driver selection:
+  - `i965` - Intel Gen 7 through Gen 9.5 (Legacy)
+  - `iHD` - Intel Gen 8+ (Recommended for modern Intel)
+  - `radeonsi` - AMD Radeon (Mesa)
+</ParamField>
+
+### Setup
+
+<Steps>
+  <Step title="Install VAAPI Drivers">
+    **Intel:**
+    ```bash
+    sudo apt install intel-media-va-driver-non-free
+    ```
+    
+    **AMD:**
+    ```bash
+    sudo apt install mesa-va-drivers
+    ```
+  </Step>
+  
+  <Step title="Install VAAPI Utilities">
+    ```bash
+    sudo apt install vainfo
+    ```
+  </Step>
+  
+  <Step title="Verify VAAPI Support">
+    ```bash
+    vainfo --display drm --device /dev/dri/renderD128
+    ```
+  </Step>
+  
+  <Step title="Set Permissions">
+    ```bash
+    sudo usermod -a -G video ersatztv
+    sudo usermod -a -G render ersatztv
+    ```
+  </Step>
+  
+  <Step title="Configure Profile">
+    - **Hardware Acceleration**: VAAPI
+    - **VAAPI Driver**: iHD (Intel) or radeonsi (AMD)
+    - **VAAPI Device**: `/dev/dri/renderD128`
+    - **VAAPI Display**: `:0`
+  </Step>
+</Steps>
+
+### VAAPI Configuration
+
+<ParamField body="VaapiDisplay" type="string" default=":0">
+  X11 display for VAAPI (usually `:0`)
+</ParamField>
+
+<ParamField body="VaapiDevice" type="string" default="/dev/dri/renderD128">
+  DRM render device path
+</ParamField>
+
+**Example Pipeline:**
+
+```bash
+VAAPI_DRIVER=iHD ffmpeg \
+  -hwaccel vaapi -hwaccel_device /dev/dri/renderD128 \
+  -hwaccel_output_format vaapi -i input.mkv \
+  -vf "scale_vaapi=w=1920:h=1080" \
+  -c:v h264_vaapi -b:v 6000k \
+  -c:a aac -b:a 192k \
+  output.ts
+```
+
+## AMD AMF
+
+### Requirements
+
+- **GPU**: AMD Radeon RX 400 series or newer (Polaris+)
+- **Drivers**: AMD Adrenalin drivers (Windows) or AMDGPU-PRO (Linux)
+- **OS**: Windows 10/11, Linux (limited support)
+
+### Supported Codecs
+
+<ResponseField name="H.264" type="codec">
+  All VCE/VCN-capable AMD GPUs
+</ResponseField>
+
+<ResponseField name="HEVC" type="codec">
+  RX 400 series and newer (Polaris+)
+</ResponseField>
+
+### Setup on Windows
+
+<Steps>
+  <Step title="Install AMD Drivers">
+    Download and install latest AMD Adrenalin drivers
+  </Step>
+  
+  <Step title="Verify AMF Support">
+    ```powershell
+    ffmpeg -hide_banner -encoders | findstr amf
+    ```
+  </Step>
+  
+  <Step title="Enable in ErsatzTV">
+    Set Hardware Acceleration to AMF
+  </Step>
+</Steps>
+
+**Example Pipeline:**
+
+```bash
+ffmpeg -hwaccel d3d11va -hwaccel_output_format d3d11 \
+  -i input.mkv \
+  -c:v h264_amf -quality quality -b:v 6000k \
+  -c:a aac -b:a 192k \
+  output.ts
+```
+
+<Note>
+AMF support on Linux is experimental and may require proprietary AMDGPU-PRO drivers.
+</Note>
+
+## Apple VideoToolbox
+
+### Requirements
+
+- **OS**: macOS 10.8 or newer
+- **Hardware**: Mac with Intel or Apple Silicon
+- **Codecs**: H.264, HEVC
+
+### Setup
+
+<Steps>
+  <Step title="Verify VideoToolbox">
+    ```bash
+    ffmpeg -hide_banner -encoders | grep videotoolbox
+    ```
+  </Step>
+  
+  <Step title="Enable in ErsatzTV">
+    Set Hardware Acceleration to VideoToolbox
+  </Step>
+</Steps>
+
+**Example Pipeline:**
+
+```bash
+ffmpeg -hwaccel videotoolbox -i input.mkv \
+  -c:v h264_videotoolbox -b:v 6000k \
+  -c:a aac -b:a 192k \
+  output.ts
+```
+
+<Tip>
+Apple Silicon Macs have excellent VideoToolbox performance with low power consumption.
+</Tip>
+
+## Raspberry Pi (V4L2M2M)
+
+### Requirements
+
+- **Hardware**: Raspberry Pi 3 or newer
+- **OS**: Raspberry Pi OS (Bullseye or newer)
+- **Codec**: H.264 only
+
+### Setup
+
+<Steps>
+  <Step title="Enable Camera/Hardware Encode">
+    ```bash
+    sudo raspi-config
+    ```
+    
+    Enable: **Interface Options > Camera**
+  </Step>
+  
+  <Step title="Install FFmpeg with V4L2">
+    ```bash
+    sudo apt install ffmpeg
+    ```
+  </Step>
+  
+  <Step title="Test V4L2M2M">
+    ```bash
+    ffmpeg -f lavfi -i testsrc -t 10 -c:v h264_v4l2m2m -f null -
+    ```
+  </Step>
+  
+  <Step title="Enable in ErsatzTV">
+    Set Hardware Acceleration to V4L2M2M
+  </Step>
+</Steps>
+
+<Warning>
+Raspberry Pi hardware encoding is limited to H.264 1080p30. Performance may not support multiple concurrent streams.
+</Warning>
+
+## Health Checks
+
+ErsatzTV includes hardware acceleration health checks to verify proper configuration.
+
+**Check Status:**
+
+1. Navigate to **Settings > System**
+2. View **Hardware Acceleration Health**
+3. Check for errors or warnings
+
+**Common Issues:**
+- Device not accessible
+- Missing drivers
+- Insufficient permissions
+- Codec not supported by hardware
+
+## Performance Comparison
+
+### CPU Usage (Transcoding 1080p60 HEVC to H.264)
+
+| Method | CPU Usage | GPU Usage | Power | Quality |
+|--------|-----------|-----------|-------|----------|
+| Software (x264) | 80-100% | 0% | High | Excellent |
+| NVENC | 5-10% | 60-80% | Medium | Very Good |
+| QSV | 10-15% | 50-70% | Low | Good |
+| VAAPI | 10-20% | 60-80% | Medium | Good |
+| AMF | 5-15% | 50-70% | Medium | Good |
+
+### Quality vs Speed
+
+<Note>
+Hardware encoders prioritize **speed over quality**. Software encoding (x264/x265) produces better quality at the same bitrate, but requires significantly more CPU resources.
+</Note>
+
+**When to use hardware acceleration:**
+- Multiple concurrent streams
+- Limited CPU resources
+- Power efficiency is important
+- Speed/latency is critical
+
+**When to use software encoding:**
+- Single stream or few concurrent streams
+- Quality is paramount
+- CPU resources available
+- Archival/preservation use case
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Hardware acceleration not detected">
+    **Check:**
+    - Drivers installed and up to date
+    - Device permissions (Linux: `/dev/dri/renderD128`)
+    - FFmpeg compiled with hardware support
+    - Health check in ErsatzTV settings
+    
+    **Test manually:**
+    ```bash
+    ffmpeg -hwaccels
+    ffmpeg -encoders | grep nvenc
+    ffmpeg -encoders | grep qsv
+    ffmpeg -encoders | grep vaapi
+    ```
+  </Accordion>
+  
+  <Accordion title="Transcoding fails with hardware acceleration">
+    **Common causes:**
+    - Unsupported codec/profile
+    - Hardware session limit reached (NVENC)
+    - Insufficient GPU memory
+    - Driver compatibility issues
+    
+    **Solutions:**
+    - Check FFmpeg logs for specific error
+    - Test with software encoding
+    - Verify codec support for your hardware
+    - Update drivers
+    - Reduce concurrent streams
+  </Accordion>
+  
+  <Accordion title="Poor quality with hardware encoding">
+    **Improve quality:**
+    - Increase video bitrate (6000+ Kbps for 1080p)
+    - Use higher quality preset if available
+    - Consider using HEVC instead of H.264
+    - Some hardware encoders have limited quality controls
+    
+    **Note:**
+    Hardware encoders generally produce lower quality than software at same bitrate. Increase bitrate by 20-30% to match software quality.
+  </Accordion>
+  
+  <Accordion title="Linux: Permission denied accessing /dev/dri">
+    **Fix permissions:**
+    ```bash
+    # Add user to required groups
+    sudo usermod -a -G video ersatztv
+    sudo usermod -a -G render ersatztv
+    
+    # Verify
+    groups ersatztv
+    
+    # Restart service
+    sudo systemctl restart ersatztv
+    ```
+  </Accordion>
+  
+  <Accordion title="NVENC session limit exceeded">
+    **GeForce GPU Limitation:**
+    
+    Consumer NVIDIA GPUs limit concurrent NVENC sessions to 3.
+    
+    **Workarounds:**
+    - Upgrade to Quadro/Tesla GPU
+    - Use software encoding for some streams
+    - Distribute load across multiple servers
+    - Research NVENC unlock patch (unsupported)
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Test Before Deploying">
+    Always test hardware acceleration with your specific hardware before relying on it in production.
+  </Step>
+  
+  <Step title="Monitor GPU Utilization">
+    Use `nvidia-smi`, `intel_gpu_top`, or similar tools to monitor GPU usage.
+  </Step>
+  
+  <Step title="Plan for Fallback">
+    Configure software encoding as fallback if hardware acceleration fails.
+  </Step>
+  
+  <Step title="Update Drivers Regularly">
+    Keep GPU drivers updated for best performance and bug fixes.
+  </Step>
+  
+  <Step title="Match Bitrate to Hardware">
+    Hardware encoders may need higher bitrates than software for equivalent quality.
+  </Step>
+</Steps>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Transcoding" icon="gears" href="./transcoding">
+    Configure FFmpeg transcoding profiles
+  </Card>
+  
+  <Card title="IPTV Streaming" icon="signal-stream" href="./iptv">
+    Apply hardware acceleration to IPTV streams
+  </Card>
+</CardGroup>

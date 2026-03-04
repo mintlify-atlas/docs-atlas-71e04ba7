@@ -1,0 +1,459 @@
+---
+title: 'IPTV Endpoints'
+description: 'Stream channels via IPTV protocols'
+---
+
+## Overview
+
+ErsatzTV provides IPTV endpoints for streaming channels to compatible players and apps. These endpoints support M3U playlists, HLS streams, and MPEG-TS streams.
+
+## M3U Channel Playlist
+
+Retrieve an M3U playlist containing all channels.
+
+```bash
+GET /iptv/channels.m3u
+```
+
+### Query Parameters
+
+<ParamField query="mode" type="string" default="mixed">
+  Streaming mode for channels:
+  - `mixed` - Use each channel's configured streaming mode
+  - `hls` - Force HLS for all channels
+  - `ts` - Force MPEG-TS for all channels
+</ParamField>
+
+<ParamField query="access_token" type="string">
+  JWT token for authentication (when auth is enabled)
+</ParamField>
+
+### Response
+
+Returns an M3U playlist with channel entries:
+
+```
+#EXTM3U
+#EXTINF:-1 tvg-id="1" tvg-name="Movies 24/7" tvg-logo="http://localhost:8409/iptv/logos/1.jpg" group-title="Entertainment",Movies 24/7
+http://localhost:8409/iptv/channel/1.m3u8
+#EXTINF:-1 tvg-id="2" tvg-name="Classic TV" tvg-logo="http://localhost:8409/iptv/logos/2.jpg" group-title="Entertainment",Classic TV
+http://localhost:8409/iptv/channel/2.m3u8
+```
+
+### Example Request
+
+```bash
+curl http://localhost:8409/iptv/channels.m3u?mode=mixed
+```
+
+### Using with Players
+
+Import the M3U URL into IPTV players:
+
+<CardGroup cols={2}>
+  <Card title="VLC Media Player" icon="play">
+    Media > Open Network Stream > Enter M3U URL
+  </Card>
+  
+  <Card title="Kodi" icon="kodi">
+    PVR IPTV Simple Client > M3U Play List URL
+  </Card>
+  
+  <Card title="Plex" icon="plex">
+    Install Plex Live TV > Add M3U source
+  </Card>
+  
+  <Card title="Emby/Jellyfin" icon="server">
+    Live TV > Tuner Devices > M3U Tuner
+  </Card>
+</CardGroup>
+
+<Note>
+  The M3U playlist URL should be stable and can be saved in players for ongoing access.
+</Note>
+
+## HLS Channel Stream
+
+Stream a channel using HTTP Live Streaming (HLS).
+
+```bash
+GET /iptv/channel/{channelNumber}.m3u8
+```
+
+### Path Parameters
+
+<ParamField path="channelNumber" type="string" required>
+  Channel number (e.g., "1", "2.1", "100")
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="mode" type="string" default="mixed">
+  Streaming mode:
+  - `mixed` - Use channel's configured mode
+  - `hls-direct` - Direct HLS streaming
+  - `segmenter` - HLS with FFmpeg segmenter
+  - `segmenter-v2` - HLS segmenter v2
+  - `segmenter-fmp4` - HLS with fMP4 segments
+</ParamField>
+
+<ParamField query="access_token" type="string">
+  JWT token for authentication
+</ParamField>
+
+### Response
+
+Returns an HLS multi-variant playlist:
+
+```
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=10000000,RESOLUTION=1920x1080,CODECS="avc1.4D4028,mp4a.40.2"
+http://localhost:8409/iptv/session/1/hls.m3u8
+```
+
+### Example Request
+
+```bash
+curl http://localhost:8409/iptv/channel/1.m3u8
+```
+
+### HLS Session Playlist
+
+The session-specific playlist is automatically managed:
+
+```bash
+GET /iptv/session/{channelNumber}/hls.m3u8
+```
+
+This endpoint returns the actual segment playlist with `.ts` or `.m4s` files.
+
+<Info>
+  Players automatically fetch the session playlist. Direct access is typically not needed.
+</Info>
+
+## MPEG-TS Channel Stream
+
+Stream a channel using MPEG Transport Stream.
+
+```bash
+GET /iptv/channel/{channelNumber}.ts
+```
+
+### Path Parameters
+
+<ParamField path="channelNumber" type="string" required>
+  Channel number
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="mode" type="string" default="mixed">
+  Transport stream mode:
+  - `mixed` - Use channel's configured mode
+  - `ts-legacy` - Legacy TS streaming
+  - `ts` - Hybrid TS streaming
+</ParamField>
+
+<ParamField query="access_token" type="string">
+  JWT token for authentication
+</ParamField>
+
+### Response
+
+Returns a continuous MPEG-TS stream with `Content-Type: video/mp2t`.
+
+### Example Request
+
+```bash
+curl http://localhost:8409/iptv/channel/1.ts > channel1.ts
+```
+
+<Warning>
+  MPEG-TS streams are continuous and may consume significant bandwidth. Use HLS for most applications.
+</Warning>
+
+## Channel Logos
+
+Retrieve channel logo images.
+
+```bash
+GET /iptv/logos/{fileName}
+GET /iptv/logos/{fileName}.jpg
+```
+
+### Path Parameters
+
+<ParamField path="fileName" type="string" required>
+  Logo filename (typically the channel ID)
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="contentType" type="string">
+  Desired content type (e.g., "image/jpeg", "image/png")
+</ParamField>
+
+### Response
+
+Returns the image file with appropriate MIME type.
+
+### Example Request
+
+```bash
+curl http://localhost:8409/iptv/logos/1.jpg -o channel1-logo.jpg
+```
+
+## Streaming Modes
+
+ErsatzTV supports multiple streaming modes optimized for different use cases:
+
+### HLS Direct
+
+Direct HLS streaming without segmentation:
+
+- Fast startup
+- Lower server overhead
+- Best for compatible modern players
+- May not work with all clients
+
+### HLS Segmenter
+
+HLS with FFmpeg segmenter:
+
+- Maximum compatibility
+- Supports all HLS clients
+- Slightly higher latency
+- Recommended for most users
+
+### HLS Segmenter v2
+
+Improved segmenter with better reliability:
+
+- Enhanced error recovery
+- More stable long-running streams
+- Better handling of stream changes
+
+### HLS fMP4
+
+Fragmented MP4 segments:
+
+- Modern HLS format
+- Better seeking support
+- Requires compatible clients
+- Experimental in some scenarios
+
+### Transport Stream Legacy
+
+Classic MPEG-TS streaming:
+
+- Simple continuous stream
+- Works with older IPTV clients
+- Higher bandwidth usage
+- No adaptive bitrate
+
+### Transport Stream Hybrid
+
+Improved TS streaming:
+
+- Better reliability than legacy mode
+- Handles stream changes gracefully
+- Recommended over legacy mode
+
+## Implementation Details
+
+From `ErsatzTV/Controllers/IptvController.cs:44-57`:
+
+```csharp
+[HttpHead("iptv/channels.m3u")]
+[HttpGet("iptv/channels.m3u")]
+public Task<IActionResult> GetChannelPlaylist(
+    [FromQuery] string mode = "mixed") =>
+    _mediator.Send(
+        new GetChannelPlaylist(
+            Request.Scheme,
+            Request.Host.ToString(),
+            Request.PathBase,
+            mode,
+            Request.Headers.UserAgent,
+            Request.Query["access_token"]))
+    .Map<ChannelPlaylist, IActionResult>(Ok);
+```
+
+The M3U playlist is dynamically generated based on:
+
+- Current channel configuration
+- Requested streaming mode
+- Base URL from request
+- Authentication token (if provided)
+
+### Multi-Variant Playlist Generation
+
+From `IptvController.cs:292-338`:
+
+```csharp
+private async Task<string> GetMultiVariantPlaylist(string channelNumber)
+{
+    var variantPlaylist =
+        $"{Request.Scheme}://{Request.Host}{Request.PathBase}/iptv/session/{channelNumber}/hls.m3u8{AccessTokenQuery()}";
+    
+    Option<ChannelStreamingSpecsViewModel> maybeStreamingSpecs =
+        await _mediator.Send(new GetChannelStreamingSpecs(channelNumber));
+    
+    string resolution = string.Empty;
+    var bitrate = "10000000";
+    
+    foreach (ChannelStreamingSpecsViewModel streamingSpecs in maybeStreamingSpecs)
+    {
+        // Determine codec strings based on profile
+        string videoCodec = streamingSpecs.VideoFormat switch
+        {
+            FFmpegProfileVideoFormat.Av1 => "av01.0.01M.08",
+            FFmpegProfileVideoFormat.Hevc => "hvc1.1.6.L93.B0",
+            FFmpegProfileVideoFormat.H264 => "avc1.4D4028",
+            _ => string.Empty
+        };
+        
+        string audioCodec = streamingSpecs.AudioFormat switch
+        {
+            FFmpegProfileAudioFormat.Ac3 => "ac-3",
+            FFmpegProfileAudioFormat.Aac or FFmpegProfileAudioFormat.AacLatm => "mp4a.40.2",
+            _ => string.Empty
+        };
+        
+        // Build codec string and resolution info
+        resolution = $",RESOLUTION={streamingSpecs.Width}x{streamingSpecs.Height}{codecs}";
+        bitrate = streamingSpecs.Bitrate.ToString(CultureInfo.InvariantCulture);
+    }
+    
+    return $@"#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH={bitrate}{resolution}
+{variantPlaylist}";
+}
+```
+
+The multi-variant playlist includes:
+
+- Bandwidth information from FFmpeg profile
+- Resolution from profile settings
+- Codec information for client compatibility
+- Link to session-specific variant
+
+## Authentication
+
+IPTV endpoints support optional authentication:
+
+### JWT Authentication
+
+Include token as query parameter:
+
+```bash
+http://localhost:8409/iptv/channels.m3u?access_token=YOUR_JWT_TOKEN
+```
+
+### Persistent Authentication
+
+Tokens in playlist URLs are preserved in stream URLs:
+
+```
+http://localhost:8409/iptv/channel/1.m3u8?access_token=YOUR_JWT_TOKEN
+http://localhost:8409/iptv/session/1/hls.m3u8?access_token=YOUR_JWT_TOKEN
+```
+
+See [Authentication API](/api/authentication) for token generation.
+
+<Note>
+  When authentication is disabled, all IPTV endpoints are publicly accessible.
+</Note>
+
+## Client Compatibility
+
+### Recommended Players
+
+| Player | HLS | MPEG-TS | Platform |
+|--------|-----|---------|----------|
+| VLC | ✅ | ✅ | All platforms |
+| Kodi | ✅ | ✅ | All platforms |
+| Plex | ✅ | ❌ | All platforms |
+| Channels | ✅ | ❌ | Apple TV, iOS |
+| TiviMate | ✅ | ✅ | Android TV |
+| IPTV Smarters | ✅ | ✅ | Mobile |
+| Perfect Player | ✅ | ✅ | Android |
+
+### Format Recommendations
+
+- **Modern devices**: Use HLS Segmenter mode
+- **Legacy devices**: Use Transport Stream Hybrid
+- **Web players**: Use HLS Direct or Segmenter
+- **Mobile apps**: Use HLS Segmenter
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use HLS" icon="film">
+    Prefer HLS streaming for better compatibility and adaptive bitrate
+  </Card>
+  
+  <Card title="Enable Auth" icon="lock">
+    Use JWT authentication for security when exposing to internet
+  </Card>
+  
+  <Card title="Monitor Sessions" icon="chart-line">
+    Track active streams to understand usage and performance
+  </Card>
+  
+  <Card title="Set Mode" icon="sliders">
+    Configure appropriate streaming mode per channel based on content
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Stream Won't Start
+
+If streams fail to start:
+
+1. Verify channel is enabled
+2. Check FFmpeg profile configuration
+3. Review transcoding logs
+4. Test with VLC for basic connectivity
+5. Ensure authentication token is valid (if auth enabled)
+
+### Buffering Issues
+
+If streams buffer frequently:
+
+1. Reduce bitrate in FFmpeg profile
+2. Use HLS Segmenter mode for better buffering
+3. Check network bandwidth
+4. Enable hardware acceleration
+5. Monitor server CPU usage
+
+### Authentication Errors
+
+If authentication fails:
+
+1. Verify `access_token` parameter is included
+2. Check token hasn't expired
+3. Ensure JWT secret is correct
+4. Test token with non-streaming endpoints first
+
+## Related Endpoints
+
+- [XMLTV Guide](/api/xmltv) - EPG data for channels
+- [HDHomeRun](/api/hdhr) - HDHomeRun emulation
+- [Channels API](/api/channels) - Manage channels
+- [Sessions API](#) - Monitor active streams
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="XMLTV Guide" icon="list" href="/api/xmltv">
+    Add EPG data to your IPTV setup
+  </Card>
+  
+  <Card title="HDHomeRun" icon="broadcast-tower" href="/api/hdhr">
+    Use HDHomeRun-compatible clients
+  </Card>
+</CardGroup>

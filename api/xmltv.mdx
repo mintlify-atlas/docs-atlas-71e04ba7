@@ -1,0 +1,523 @@
+---
+title: 'XMLTV Guide'
+description: 'Electronic Program Guide (EPG) data in XMLTV format'
+---
+
+## Overview
+
+ErsatzTV provides EPG (Electronic Program Guide) data in XMLTV format for all channels. XMLTV is an industry-standard XML format for TV listings, compatible with Plex, Emby, Jellyfin, Kodi, and most IPTV applications.
+
+## Get XMLTV Guide
+
+Retrieve the complete program guide for all channels.
+
+```bash
+GET /iptv/xmltv.xml
+```
+
+### Query Parameters
+
+<ParamField query="access_token" type="string">
+  JWT token for authentication (when auth is enabled)
+</ParamField>
+
+### Response
+
+Returns an XML document in XMLTV format:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv generator-info-name="ErsatzTV" generator-info-url="https://ersatztv.org">
+  <channel id="1">
+    <display-name>Movies 24/7</display-name>
+    <icon src="http://localhost:8409/iptv/logos/1.jpg" />
+  </channel>
+  
+  <programme start="20260304140000 +0000" stop="20260304163000 +0000" channel="1">
+    <title lang="en">The Matrix</title>
+    <sub-title lang="en">1999 Science Fiction</sub-title>
+    <desc lang="en">A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.</desc>
+    <date>1999</date>
+    <category lang="en">Movie</category>
+    <category lang="en">Science Fiction</category>
+    <category lang="en">Action</category>
+    <icon src="http://localhost:8409/iptv/artwork/poster-123.jpg" />
+    <episode-num system="onscreen">1999</episode-num>
+    <star-rating>
+      <value>8.7/10</value>
+    </star-rating>
+    <length units="minutes">136</length>
+  </programme>
+  
+  <programme start="20260304163000 +0000" stop="20260304185500 +0000" channel="1">
+    <title lang="en">Blade Runner</title>
+    <sub-title lang="en">1982 Science Fiction</sub-title>
+    <desc lang="en">A blade runner must pursue and terminate four replicants who stole a ship in space and have returned to Earth to find their creator.</desc>
+    <date>1982</date>
+    <category lang="en">Movie</category>
+    <category lang="en">Science Fiction</category>
+    <category lang="en">Thriller</category>
+    <icon src="http://localhost:8409/iptv/artwork/poster-456.jpg" />
+    <episode-num system="onscreen">1982</episode-num>
+    <star-rating>
+      <value>8.1/10</value>
+    </star-rating>
+    <length units="minutes">117</length>
+  </programme>
+</tv>
+```
+
+### Example Request
+
+```bash
+curl http://localhost:8409/iptv/xmltv.xml -o guide.xml
+```
+
+### Example with Authentication
+
+```bash
+curl "http://localhost:8409/iptv/xmltv.xml?access_token=YOUR_JWT_TOKEN" -o guide.xml
+```
+
+## XMLTV Structure
+
+### Root Element
+
+```xml
+<tv generator-info-name="ErsatzTV" generator-info-url="https://ersatztv.org">
+  <!-- channels and programmes -->
+</tv>
+```
+
+The root `<tv>` element contains all channel and programme data.
+
+### Channel Elements
+
+```xml
+<channel id="1">
+  <display-name>Movies 24/7</display-name>
+  <icon src="http://localhost:8409/iptv/logos/1.jpg" />
+</channel>
+```
+
+<ResponseField name="id" type="attribute">
+  Unique channel identifier (channel number)
+</ResponseField>
+
+<ResponseField name="display-name" type="element">
+  Channel name as displayed in guides
+</ResponseField>
+
+<ResponseField name="icon" type="element">
+  URL to channel logo image
+</ResponseField>
+
+### Programme Elements
+
+```xml
+<programme start="20260304140000 +0000" stop="20260304163000 +0000" channel="1">
+  <title lang="en">The Matrix</title>
+  <sub-title lang="en">1999 Science Fiction</sub-title>
+  <desc lang="en">Plot summary...</desc>
+  <date>1999</date>
+  <category lang="en">Movie</category>
+  <category lang="en">Science Fiction</category>
+  <icon src="http://localhost:8409/iptv/artwork/poster-123.jpg" />
+  <episode-num system="onscreen">1999</episode-num>
+  <star-rating>
+    <value>8.7/10</value>
+  </star-rating>
+  <length units="minutes">136</length>
+</programme>
+```
+
+<Expandable title="Programme Element Properties">
+  <ResponseField name="start" type="attribute" required>
+    Programme start time in format: `YYYYMMDDHHmmss +ZZZZ`
+  </ResponseField>
+  
+  <ResponseField name="stop" type="attribute" required>
+    Programme end time in format: `YYYYMMDDHHmmss +ZZZZ`
+  </ResponseField>
+  
+  <ResponseField name="channel" type="attribute" required>
+    Channel ID this programme airs on
+  </ResponseField>
+  
+  <ResponseField name="title" type="element" required>
+    Programme title
+  </ResponseField>
+  
+  <ResponseField name="sub-title" type="element">
+    Episode name or subtitle
+  </ResponseField>
+  
+  <ResponseField name="desc" type="element">
+    Programme description or plot summary
+  </ResponseField>
+  
+  <ResponseField name="date" type="element">
+    Original release or air year
+  </ResponseField>
+  
+  <ResponseField name="category" type="element">
+    Genre or category (multiple allowed)
+  </ResponseField>
+  
+  <ResponseField name="icon" type="element">
+    URL to programme artwork/poster
+  </ResponseField>
+  
+  <ResponseField name="episode-num" type="element">
+    Episode numbering in various systems
+  </ResponseField>
+  
+  <ResponseField name="star-rating" type="element">
+    Content rating or review score
+  </ResponseField>
+  
+  <ResponseField name="length" type="element">
+    Programme duration in specified units
+  </ResponseField>
+</Expandable>
+
+### Episode Numbering
+
+ErsatzTV provides episode numbers in multiple formats:
+
+#### TV Episodes
+
+```xml
+<episode-num system="onscreen">S01E05</episode-num>
+<episode-num system="xmltv_ns">0.4.</episode-num>
+<episode-num system="common">S01E05</episode-num>
+```
+
+- **onscreen** - Human-readable format (e.g., "S01E05")
+- **xmltv_ns** - XMLTV numbering (season.episode.part, 0-indexed)
+- **common** - Common SxxExx format
+
+#### Movies
+
+```xml
+<episode-num system="onscreen">1999</episode-num>
+```
+
+Movies typically show the release year.
+
+## Time Format
+
+XMLTV uses a specific time format:
+
+```
+YYYYMMDDHHmmss +ZZZZ
+```
+
+Where:
+- `YYYY` - Year (4 digits)
+- `MM` - Month (2 digits)
+- `DD` - Day (2 digits)
+- `HH` - Hour (2 digits, 24-hour format)
+- `mm` - Minute (2 digits)
+- `ss` - Second (2 digits)
+- `+ZZZZ` - Timezone offset (e.g., `+0000` for UTC, `-0500` for EST)
+
+Example: `20260304140000 +0000` = March 4, 2026, 2:00:00 PM UTC
+
+## Implementation Details
+
+From `IptvController.cs:59-68`:
+
+```csharp
+[HttpHead("iptv/xmltv.xml")]
+[HttpGet("iptv/xmltv.xml")]
+public Task<IActionResult> GetGuide() =>
+    _mediator.Send(
+        new GetChannelGuide(
+            Request.Scheme,
+            Request.Host.ToString(),
+            Request.PathBase,
+            Request.Query["access_token"]))
+    .ToActionResult();
+```
+
+The guide is dynamically generated based on:
+
+- Current channel schedules
+- Configured time window (typically 7-14 days)
+- Media metadata from libraries
+- Channel artwork and logos
+
+## Using XMLTV with Clients
+
+### Plex Live TV
+
+1. Set up ErsatzTV as an HDHomeRun device
+2. When prompted for guide data, select **XMLTV Guide**
+3. Enter the XMLTV URL: `http://localhost:8409/iptv/xmltv.xml`
+4. Plex will automatically refresh the guide periodically
+
+<Note>
+  Plex may cache guide data. Force a refresh in **Settings** > **Live TV & DVR** > **Guide**.
+</Note>
+
+### Emby Live TV
+
+1. Navigate to **Settings** > **Live TV**
+2. Click **Guide Providers**
+3. Add **XMLTV** guide provider
+4. Enter URL: `http://localhost:8409/iptv/xmltv.xml`
+5. Set refresh interval (recommended: 12-24 hours)
+
+### Jellyfin Live TV
+
+1. Navigate to **Dashboard** > **Live TV**
+2. Under **Guide Providers**, add **XMLTV**
+3. Enter the guide URL: `http://localhost:8409/iptv/xmltv.xml`
+4. Configure update frequency
+
+### Kodi PVR IPTV Simple Client
+
+1. Install **PVR IPTV Simple Client** addon
+2. Configure addon settings:
+   - **M3U Play List URL**: `http://localhost:8409/iptv/channels.m3u`
+   - **EPG Settings**:
+     - **XMLTV URL**: `http://localhost:8409/iptv/xmltv.xml`
+     - **Update Interval**: 12 hours
+3. Enable the PVR client
+4. Kodi will download and display the guide
+
+### Other IPTV Apps
+
+Most IPTV applications support XMLTV:
+
+1. Look for EPG or Guide settings
+2. Select XMLTV as the guide source
+3. Enter: `http://localhost:8409/iptv/xmltv.xml`
+4. Configure update frequency (12-24 hours recommended)
+
+## Authentication
+
+When authentication is enabled, include the `access_token` parameter:
+
+```
+http://localhost:8409/iptv/xmltv.xml?access_token=YOUR_JWT_TOKEN
+```
+
+<Warning>
+  Some clients may not support query parameters in XMLTV URLs. If your client doesn't work with tokens, consider using a reverse proxy or disabling authentication.
+</Warning>
+
+## Guide Configuration
+
+### Guide Duration
+
+Configure how far ahead the guide extends:
+
+1. Navigate to **Settings** > **Playback** in ErsatzTV
+2. Set **Guide Duration** (typically 7-14 days)
+3. Longer durations increase XML file size
+
+### Update Frequency
+
+Guide data is generated on-demand:
+
+- No server-side caching
+- Always reflects current schedule state
+- Clients should cache and update periodically
+
+<Info>
+  Set client update intervals to 12-24 hours to balance freshness with server load.
+</Info>
+
+## XMLTV File Size
+
+XMLTV file size depends on:
+
+- Number of channels
+- Guide duration (days)
+- Metadata richness (descriptions, artwork)
+
+Typical sizes:
+- 10 channels, 7 days: ~2-5 MB
+- 50 channels, 7 days: ~10-25 MB
+- 100 channels, 14 days: ~50-100 MB
+
+<Note>
+  Large XMLTV files may take longer to download and parse. Consider reducing guide duration for large channel lineups.
+</Note>
+
+## Metadata Quality
+
+XMLTV quality depends on source metadata:
+
+### From Media Libraries
+
+Metadata scraped from:
+- TMDB (The Movie Database)
+- TVDB (The TV Database)
+- NFO files
+- Media file tags
+
+### Enrichment
+
+ErsatzTV enriches XMLTV with:
+- High-quality descriptions
+- Accurate episode numbers
+- Genre categorization
+- Artwork URLs
+- Release dates
+- Content ratings
+
+<Info>
+  Keep media libraries updated with accurate metadata for the best guide experience.
+</Info>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Set Update Interval" icon="clock">
+    Configure clients to update every 12-24 hours
+  </Card>
+  
+  <Card title="Reasonable Duration" icon="calendar-days">
+    Use 7-14 day guide duration for balance
+  </Card>
+  
+  <Card title="Good Metadata" icon="database">
+    Ensure media has accurate metadata before scheduling
+  </Card>
+  
+  <Card title="Cache in Clients" icon="download">
+    Let clients cache XMLTV data to reduce server requests
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Guide Not Loading
+
+If clients can't load the guide:
+
+1. Test URL directly: `curl http://localhost:8409/iptv/xmltv.xml`
+2. Check for XML parsing errors
+3. Verify authentication token (if enabled)
+4. Review server logs for errors
+5. Ensure channels have valid schedules
+
+### Missing Programme Data
+
+If guide shows blank or partial data:
+
+1. Verify channels have scheduled content
+2. Check that media has metadata
+3. Confirm schedule extends into guide window
+4. Review library scan status
+5. Ensure collections are not empty
+
+### Incorrect Times
+
+If programme times are wrong:
+
+1. Check server timezone configuration
+2. Verify client timezone settings
+3. Ensure time synchronization (NTP)
+4. Review schedule configuration
+
+### Large File Issues
+
+If XMLTV file is too large:
+
+1. Reduce guide duration in settings
+2. Disable artwork URLs if not needed
+3. Reduce number of channels
+4. Consider guide data compression (if client supports)
+
+### Update Issues
+
+If guide doesn't update:
+
+1. Force refresh in client application
+2. Clear client guide cache
+3. Verify update interval settings
+4. Check network connectivity
+5. Review client logs for errors
+
+## Validation
+
+Validate your XMLTV output:
+
+### Manual Validation
+
+```bash
+# Download guide
+curl http://localhost:8409/iptv/xmltv.xml -o guide.xml
+
+# Check XML validity
+xmllint --noout guide.xml
+
+# Validate against DTD (if available)
+xmllint --dtdvalid xmltv.dtd --noout guide.xml
+```
+
+### Online Validators
+
+Use online XMLTV validators:
+- [XMLTV Validator](https://www.xmltv.org/)
+- XML syntax checkers
+
+## Advanced Usage
+
+### Combining with M3U
+
+Provide both M3U and XMLTV for complete IPTV setup:
+
+- **M3U**: `http://localhost:8409/iptv/channels.m3u`
+- **XMLTV**: `http://localhost:8409/iptv/xmltv.xml`
+
+Most IPTV clients accept both URLs for a complete experience.
+
+### Reverse Proxy Configuration
+
+For external access, use a reverse proxy with authentication:
+
+```nginx
+location /iptv/xmltv.xml {
+    proxy_pass http://localhost:8409;
+    proxy_set_header Host $host;
+    # Add authentication here if needed
+}
+```
+
+### Caching Proxy
+
+For high-traffic scenarios, cache XMLTV responses:
+
+```nginx
+location /iptv/xmltv.xml {
+    proxy_pass http://localhost:8409;
+    proxy_cache my_cache;
+    proxy_cache_valid 200 12h;
+    proxy_cache_key "$uri$args";
+}
+```
+
+## Related Endpoints
+
+- [IPTV Endpoints](/api/iptv) - M3U playlists and streaming
+- [HDHomeRun](/api/hdhr) - HDHomeRun device emulation
+- [Channels API](/api/channels) - Manage channels
+- [Schedules API](/api/schedules) - Configure channel schedules
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="IPTV Setup" icon="film" href="/api/iptv">
+    Set up complete IPTV streaming with M3U playlists
+  </Card>
+  
+  <Card title="HDHomeRun" icon="broadcast-tower" href="/api/hdhr">
+    Use HDHomeRun-compatible clients with guide data
+  </Card>
+</CardGroup>

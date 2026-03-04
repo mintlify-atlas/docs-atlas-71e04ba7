@@ -1,0 +1,409 @@
+---
+title: 'Media Items'
+description: 'Query and manage individual media items'
+---
+
+## Overview
+
+Media items represent individual pieces of content in your ErsatzTV libraries: movies, TV episodes, music videos, songs, and images. The Media Items API provides query and management capabilities.
+
+<Note>
+  The Media Items API is primarily accessed through the web UI search and browse interfaces. Direct API endpoints for media item queries are provided through the search functionality.
+</Note>
+
+## Media Item Types
+
+ErsatzTV supports the following media types:
+
+<CardGroup cols={2}>
+  <Card title="Movies" icon="film">
+    Feature films and standalone video content
+  </Card>
+  
+  <Card title="TV Episodes" icon="tv">
+    Television show episodes organized by series and season
+  </Card>
+  
+  <Card title="Music Videos" icon="music">
+    Music video clips with artist and album metadata
+  </Card>
+  
+  <Card title="Songs" icon="compact-disc">
+    Audio tracks with album and artist information
+  </Card>
+  
+  <Card title="Images" icon="image">
+    Still images for display (e.g., channel logos, artwork)
+  </Card>
+  
+  <Card title="Other Videos" icon="video">
+    Miscellaneous video content not categorized as movies or episodes
+  </Card>
+</CardGroup>
+
+## Media Item Structure
+
+### Movie Metadata
+
+Movies include:
+
+- Title
+- Release year
+- Plot summary
+- Genres
+- Content rating
+- Runtime
+- IMDb/TMDB IDs
+- Poster and backdrop artwork
+- Subtitle tracks
+- Audio tracks
+- Video codec information
+
+### Episode Metadata
+
+TV episodes include:
+
+- Series title
+- Season number
+- Episode number
+- Episode title
+- Air date
+- Plot summary
+- Poster artwork
+- Subtitle tracks
+- Audio tracks
+- Video codec information
+
+### Music Video Metadata
+
+Music videos include:
+
+- Track title
+- Artist name(s)
+- Album name
+- Release year
+- Genre
+- Duration
+- Thumbnail artwork
+
+## Accessing Media Items
+
+### Through Collections
+
+The primary way to work with media items programmatically is through [Smart Collections](/api/collections):
+
+```bash
+GET /api/collections/smart
+```
+
+Collections use query syntax to dynamically group media items:
+
+```
+title:"Breaking Bad" AND season:1
+```
+
+### Through Search
+
+ErsatzTV's search functionality indexes all media items. While search is primarily accessed through the web UI, it uses the same underlying media item data.
+
+## Media Item Properties
+
+### Common Properties
+
+All media items share these base properties:
+
+<ResponseField name="id" type="integer">
+  Unique media item identifier
+</ResponseField>
+
+<ResponseField name="mediaType" type="string">
+  Type: `Movie`, `Episode`, `MusicVideo`, `Song`, `Image`, `OtherVideo`
+</ResponseField>
+
+<ResponseField name="libraryId" type="integer">
+  ID of the library containing this item
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  File system or remote path to the media file
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  Item state: `Normal`, `Unavailable`, `FileNotFound`
+</ResponseField>
+
+### Metadata Properties
+
+<ResponseField name="title" type="string">
+  Primary title of the media item
+</ResponseField>
+
+<ResponseField name="sortTitle" type="string">
+  Title used for sorting (e.g., "Matrix, The")
+</ResponseField>
+
+<ResponseField name="year" type="integer">
+  Release or air year
+</ResponseField>
+
+<ResponseField name="genres" type="array">
+  List of genre tags
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Custom tags for organization
+</ResponseField>
+
+<ResponseField name="plot" type="string">
+  Description or plot summary
+</ResponseField>
+
+### Technical Properties
+
+<ResponseField name="duration" type="string">
+  Runtime in HH:MM:SS format
+</ResponseField>
+
+<ResponseField name="videoCodec" type="string">
+  Video codec (e.g., "h264", "hevc", "av1")
+</ResponseField>
+
+<ResponseField name="videoProfile" type="string">
+  Codec profile (e.g., "Main", "High")
+</ResponseField>
+
+<ResponseField name="audioCodec" type="string">
+  Audio codec (e.g., "aac", "ac3", "dts")
+</ResponseField>
+
+<ResponseField name="audioChannels" type="integer">
+  Number of audio channels (e.g., 2, 6 for 5.1)
+</ResponseField>
+
+<ResponseField name="resolution" type="string">
+  Video resolution (e.g., "1920x1080", "3840x2160")
+</ResponseField>
+
+<ResponseField name="frameRate" type="number">
+  Frames per second (e.g., 23.976, 29.97)
+</ResponseField>
+
+## Media Item States
+
+Media items can be in different states:
+
+### Normal
+
+Item is available and accessible for playback.
+
+### Unavailable
+
+Item is temporarily unavailable (e.g., remote server offline).
+
+### FileNotFound
+
+Item file no longer exists. Item is moved to trash during next library scan.
+
+<Warning>
+  Items in `FileNotFound` state should be removed from schedules and collections.
+</Warning>
+
+## Media Item Operations
+
+### Indexing
+
+Media items are automatically indexed during library scans:
+
+```bash
+POST /api/libraries/{id}/scan
+```
+
+See [Libraries API](/api/libraries) for scan details.
+
+### Metadata Refresh
+
+Metadata is refreshed during library scans. For immediate refresh:
+
+1. Navigate to the item in the web UI
+2. Click **Refresh Metadata**
+3. Or trigger a library scan via API
+
+### Trash Management
+
+Items marked for deletion are moved to trash:
+
+```bash
+POST /api/maintenance/empty_trash
+```
+
+This permanently removes trashed items from the database.
+
+## Working with Media Items
+
+### Creating Collections
+
+Group media items using smart collections:
+
+```bash
+POST /api/collections/smart/new
+```
+
+```json
+{
+  "name": "Action Movies",
+  "query": "mediatype:movie AND genre:action"
+}
+```
+
+See [Collections API](/api/collections) for details.
+
+### Scheduling Content
+
+Add media items to channel schedules:
+
+1. Create a collection containing desired items
+2. Add the collection to a channel schedule
+3. Content plays according to schedule rules
+
+See [Schedules API](/api/schedules) for scheduling details.
+
+## Query Syntax
+
+Smart collections use a query language to filter media:
+
+### Basic Queries
+
+```
+title:"Star Wars"
+mediatype:movie
+year:1977
+genre:scifi
+```
+
+### Logical Operators
+
+```
+title:"Star Wars" AND year:1977
+genre:action OR genre:adventure
+NOT genre:horror
+```
+
+### Ranges
+
+```
+year:>2000
+year:2010..2020
+runtime:<120
+```
+
+### Episode Queries
+
+```
+title:"Breaking Bad" AND season:1
+title:"The Office" AND season:2 AND episode:1
+```
+
+<Info>
+  Query syntax is case-insensitive. Use quotes for multi-word values.
+</Info>
+
+## Media Item Artwork
+
+Artwork is cached and served via the artwork endpoint:
+
+```
+GET /iptv/logos/{fileName}
+```
+
+Artwork types:
+- **Poster** - Vertical artwork for movies and shows
+- **Thumbnail** - Episode thumbnails
+- **Backdrop** - Horizontal background images
+- **Logo** - Channel and show logos
+
+## Subtitles
+
+Media items can include subtitle tracks:
+
+### Embedded Subtitles
+
+Subtitles embedded in the media file container.
+
+### External Subtitles
+
+Sidecar subtitle files (`.srt`, `.ass`, `.vtt`).
+
+### Subtitle Extraction
+
+Extract embedded subtitles to external files:
+
+```bash
+POST /api/subtitles/extract/{mediaItemId}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Collections" icon="layer-group">
+    Manage groups of media items with smart collections instead of individual items
+  </Card>
+  
+  <Card title="Regular Scans" icon="rotate">
+    Schedule regular library scans to keep media metadata up to date
+  </Card>
+  
+  <Card title="Clean Trash" icon="trash">
+    Periodically empty trash to remove deleted items from the database
+  </Card>
+  
+  <Card title="Monitor States" icon="signal">
+    Check for items in `FileNotFound` state and remove from schedules
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Media Not Appearing
+
+If media items don't appear after adding files:
+
+1. Trigger a library scan: `POST /api/libraries/{id}/scan`
+2. Check library path permissions
+3. Verify file formats are supported
+4. Review scan logs for errors
+
+### Missing Metadata
+
+If metadata is incomplete:
+
+1. Ensure files follow proper naming conventions
+2. Check metadata provider settings (TMDB, TVDB)
+3. Manually refresh metadata in the web UI
+4. Consider re-scanning with deep scan enabled
+
+### Playback Issues
+
+If media items won't play:
+
+1. Verify file paths are accessible
+2. Check FFmpeg profile compatibility
+3. Review transcoding logs
+4. Test file playback outside ErsatzTV
+
+## Related APIs
+
+- [Libraries API](/api/libraries) - Scan and index media items
+- [Collections API](/api/collections) - Group and organize media items
+- [Schedules API](/api/schedules) - Schedule media item playback
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Collections" icon="layer-group" href="/api/collections">
+    Create smart collections to organize media items
+  </Card>
+  
+  <Card title="Schedules" icon="calendar" href="/api/schedules">
+    Add media items to channel schedules
+  </Card>
+</CardGroup>

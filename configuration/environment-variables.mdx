@@ -1,0 +1,531 @@
+---
+title: Environment Variables
+description: Configure ErsatzTV using environment variables
+---
+
+ErsatzTV can be configured using environment variables. This is particularly useful for containerized deployments and when you want to avoid modifying configuration files.
+
+## Core Configuration
+
+### Paths and Directories
+
+<ParamField path="ETV_CONFIG_FOLDER" type="string">
+  Custom path for ErsatzTV configuration directory.
+
+  **Default:**
+  - Linux/macOS: `~/.local/share/ersatztv/`
+  - Windows: `%LocalAppData%\ersatztv\`
+  - Docker: `/root/.local/share/ersatztv/`
+
+  **Usage:**
+  ```bash
+  export ETV_CONFIG_FOLDER="/mnt/data/ersatztv-config"
+  ```
+
+  **Contains:**
+  - SQLite database (`ersatztv.sqlite3`)
+  - Logs directory
+  - Cache directories
+  - Templates and scripts
+  - Secrets files
+</ParamField>
+
+<ParamField path="ETV_TRANSCODE_FOLDER" type="string">
+  Custom path for transcoded video segments.
+
+  **Default:**
+  - Linux/macOS: `~/.local/share/etv-transcode/`
+  - Windows: `%LocalAppData%\etv-transcode\`
+  - Docker: `/root/.local/share/etv-transcode/`
+
+  **Usage:**
+  ```bash
+  export ETV_TRANSCODE_FOLDER="/tmp/ersatztv-transcode"
+  ```
+
+  **Note:** This directory can be large and should be on fast storage. Consider using `/tmp` or a tmpfs mount for best performance.
+</ParamField>
+
+### Network Configuration
+
+<ParamField path="ETV_UI_PORT" type="integer" default="8409">
+  Port for the web UI and API.
+
+  **Usage:**
+  ```bash
+  export ETV_UI_PORT="8080"
+  ```
+
+  **Note:** Changing this requires updating client configurations and firewall rules.
+</ParamField>
+
+<ParamField path="ETV_STREAMING_PORT" type="integer" default="8409">
+  Port for IPTV/HLS streaming endpoints.
+
+  **Usage:**
+  ```bash
+  export ETV_STREAMING_PORT="8410"
+  ```
+
+  **Default:** Same as UI port (8409). Set to a different port to separate streaming traffic.
+
+  **Example:** Use different ports for UI and streaming:
+  ```bash
+  export ETV_UI_PORT="8409"
+  export ETV_STREAMING_PORT="8410"
+  ```
+</ParamField>
+
+<ParamField path="ETV_BASE_URL" type="string">
+  Base URL path for ErsatzTV when running behind a reverse proxy with a path prefix.
+
+  **Usage:**
+  ```bash
+  export ETV_BASE_URL="/etv"
+  ```
+
+  **Example:** Access ErsatzTV at `https://example.com/etv` instead of root.
+
+  **Note:** Must include leading slash. Do not include trailing slash.
+
+  **Valid:**
+  - `/etv`
+  - `/apps/ersatztv`
+  - `/tv`
+
+  **Invalid:**
+  - `etv` (missing leading slash)
+  - `/etv/` (has trailing slash)
+</ParamField>
+
+### Instance Configuration
+
+<ParamField path="ETV_INSTANCE_ID" type="string">
+  Unique identifier for this ErsatzTV instance. Used for multi-instance deployments.
+
+  **Usage:**
+  ```bash
+  export ETV_INSTANCE_ID="living-room"
+  ```
+
+  **Use Case:** When running multiple ErsatzTV instances, use this to distinguish between them in logs and monitoring.
+</ParamField>
+
+### Media Source Configuration
+
+<ParamField path="ETV_ALLOW_SHARED_PLEX_SERVERS" type="boolean" default="false">
+  Allow scanning libraries from Plex servers shared with you (not owned by you).
+
+  **Usage:**
+  ```bash
+  export ETV_ALLOW_SHARED_PLEX_SERVERS="1"
+  ```
+
+  **Note:** Set to any non-empty value to enable. Leave unset or empty to disable.
+
+  **Security Consideration:** Enabling this allows access to content from other Plex users' servers.
+</ParamField>
+
+<ParamField path="ETV_JF_PAGE_SIZE" type="integer" default="10">
+  Number of items to request per page when scanning Jellyfin libraries.
+
+  **Usage:**
+  ```bash
+  export ETV_JF_PAGE_SIZE="50"
+  ```
+
+  **Recommendation:** Increase for faster scanning of large libraries. Decrease if Jellyfin returns errors.
+</ParamField>
+
+<ParamField path="ETV_JF_ENABLE_STATS" type="boolean" default="false">
+  Enable statistics collection for Jellyfin libraries.
+
+  **Usage:**
+  ```bash
+  export ETV_JF_ENABLE_STATS="1"
+  ```
+
+  **Note:** Set to any non-empty value to enable.
+</ParamField>
+
+### Upload Configuration
+
+<ParamField path="ETV_MAXIMUM_UPLOAD_MB" type="integer" default="10">
+  Maximum file upload size in megabytes.
+
+  **Usage:**
+  ```bash
+  export ETV_MAXIMUM_UPLOAD_MB="50"
+  ```
+
+  **Applies to:**
+  - Artwork uploads
+  - Template uploads
+  - Script uploads
+</ParamField>
+
+### Performance Tuning
+
+<ParamField path="ETV_SLOW_DB_MS" type="integer">
+  Threshold in milliseconds for logging slow database queries.
+
+  **Usage:**
+  ```bash
+  export ETV_SLOW_DB_MS="1000"
+  ```
+
+  **Default:** Not set (slow query logging disabled)
+
+  **Recommendation:** Set to 1000 (1 second) to identify performance issues.
+</ParamField>
+
+<ParamField path="ETV_SLOW_API_MS" type="integer">
+  Threshold in milliseconds for logging slow API requests.
+
+  **Usage:**
+  ```bash
+  export ETV_SLOW_API_MS="5000"
+  ```
+
+  **Default:** Not set (slow API logging disabled)
+
+  **Recommendation:** Set to 5000 (5 seconds) to identify slow endpoints.
+</ParamField>
+
+## Docker Configuration
+
+### Docker Compose Example
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  ersatztv:
+    image: ersatztv/ersatztv:latest
+    container_name: ersatztv
+    ports:
+      - "8409:8409"
+    environment:
+      - TZ=America/New_York
+      - ETV_CONFIG_FOLDER=/config
+      - ETV_TRANSCODE_FOLDER=/transcode
+      - ETV_UI_PORT=8409
+      - ETV_STREAMING_PORT=8409
+    volumes:
+      - ./config:/config
+      - ./transcode:/transcode
+      - /path/to/media:/media:ro
+    restart: unless-stopped
+```
+
+### Docker Run Example
+
+```bash
+docker run -d \
+  --name ersatztv \
+  -p 8409:8409 \
+  -e TZ=America/New_York \
+  -e ETV_CONFIG_FOLDER=/config \
+  -e ETV_TRANSCODE_FOLDER=/transcode \
+  -v ./config:/config \
+  -v ./transcode:/transcode \
+  -v /path/to/media:/media:ro \
+  --restart unless-stopped \
+  ersatztv/ersatztv:latest
+```
+
+### Docker with Authentication
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  ersatztv:
+    image: ersatztv/ersatztv:latest
+    container_name: ersatztv
+    ports:
+      - "8409:8409"
+    environment:
+      - TZ=America/New_York
+      - ETV_CONFIG_FOLDER=/config
+      - ETV_TRANSCODE_FOLDER=/transcode
+    volumes:
+      - ./config:/config
+      - ./transcode:/transcode
+      - ./appsettings.json:/app/appsettings.json:ro
+      - /path/to/media:/media:ro
+    restart: unless-stopped
+```
+
+**appsettings.json:**
+```json
+{
+  "OIDC": {
+    "Authority": "https://auth.example.com",
+    "ClientId": "ersatztv",
+    "ClientSecret": "your-secret"
+  },
+  "JWT": {
+    "IssuerSigningKey": "your-jwt-signing-key-at-least-32-characters"
+  }
+}
+```
+
+## Reverse Proxy Configuration
+
+### Nginx with Path Prefix
+
+```nginx
+location /etv/ {
+    proxy_pass http://localhost:8409/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+**ErsatzTV Configuration:**
+```bash
+export ETV_BASE_URL="/etv"
+```
+
+### Caddy with Subdomain
+
+```caddyfile
+ersatztv.example.com {
+    reverse_proxy localhost:8409
+}
+```
+
+**ErsatzTV Configuration:**
+```bash
+# No ETV_BASE_URL needed for subdomain
+```
+
+## Database Configuration
+
+<Info>
+  Database provider (SQLite/MySQL) is configured in `appsettings.json`, not via environment variables. See [Database Configuration](/configuration/database) for details.
+</Info>
+
+## Search Configuration
+
+<ParamField path="ElasticSearch:Uri" type="string">
+  Elasticsearch server URI for external search indexing.
+
+  **Configuration:** Set in `appsettings.json`
+  ```json
+  {
+    "ElasticSearch": {
+      "Uri": "http://elasticsearch:9200",
+      "IndexName": "ersatztv"
+    }
+  }
+  ```
+
+  **Default:** Not set (uses embedded Lucene search)
+
+  **Note:** Elasticsearch provides better search performance for very large libraries (50,000+ items).
+</ParamField>
+
+<ParamField path="ElasticSearch:IndexName" type="string" default="ersatztv">
+  Name of the Elasticsearch index to use.
+</ParamField>
+
+## System Paths Reference
+
+These paths are derived from environment variables and system defaults:
+
+| Purpose | Default Path | Override Variable |
+|---------|-------------|-------------------|
+| Configuration | `~/.local/share/ersatztv/` | `ETV_CONFIG_FOLDER` |
+| Database | `{ConfigFolder}/ersatztv.sqlite3` | - |
+| Logs | `{ConfigFolder}/logs/` | - |
+| Transcode | `~/.local/share/etv-transcode/` | `ETV_TRANSCODE_FOLDER` |
+| Cache | `{ConfigFolder}/cache/` | - |
+| Templates | `{ConfigFolder}/templates/` | - |
+| Scripts | `{ConfigFolder}/scripts/` | - |
+| FFmpeg Reports | `{ConfigFolder}/ffmpeg-reports/` | - |
+| Search Index | `{ConfigFolder}/search-index/` | - |
+| Data Protection | `{ConfigFolder}/data-protection/` | - |
+
+## Configuration Priority
+
+ErsatzTV loads configuration in this order (later sources override earlier ones):
+
+1. `appsettings.json` (in installation directory)
+2. `appsettings.{Environment}.json` (e.g., `appsettings.Production.json`)
+3. Environment variables
+
+**Example:** If both `appsettings.json` and `ETV_UI_PORT` are set, the environment variable wins.
+
+## Verification
+
+Check that environment variables are applied correctly:
+
+1. Start ErsatzTV
+2. Check logs for configuration:
+   ```log
+   [INF] ErsatzTV version 0.8.0
+   [INF] Database is at /config/ersatztv.sqlite3
+   [INF] Transcode folder is /transcode
+   ```
+3. Verify paths and ports match your configuration
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Environment variables not applied">
+    - Verify variables are set before starting ErsatzTV
+    - Check variable names (case-sensitive on Linux/macOS)
+    - Restart ErsatzTV after changing variables
+    - Check systemd service file or Docker Compose for variable definitions
+  </Accordion>
+
+  <Accordion title="Permission denied on custom paths">
+    Ensure ErsatzTV has read/write permissions:
+    ```bash
+    sudo chown -R ersatztv:ersatztv /custom/config/path
+    sudo chmod -R 755 /custom/config/path
+    ```
+  </Accordion>
+
+  <Accordion title="Port already in use">
+    Check if another process is using the port:
+    ```bash
+    sudo lsof -i :8409
+    ```
+    Change `ETV_UI_PORT` or stop the conflicting process.
+  </Accordion>
+
+  <Accordion title="Base URL not working">
+    - Ensure `ETV_BASE_URL` includes leading slash
+    - Verify reverse proxy configuration matches base URL
+    - Check that proxy passes path correctly
+    - Test without base URL first to isolate the issue
+  </Accordion>
+</AccordionGroup>
+
+## Examples by Deployment Type
+
+### Systemd Service
+
+```ini /etc/systemd/system/ersatztv.service
+[Unit]
+Description=ErsatzTV
+After=network.target
+
+[Service]
+Type=simple
+User=ersatztv
+Group=ersatztv
+Environment="ETV_CONFIG_FOLDER=/var/lib/ersatztv"
+Environment="ETV_TRANSCODE_FOLDER=/tmp/ersatztv-transcode"
+Environment="ETV_UI_PORT=8409"
+ExecStart=/opt/ersatztv/ErsatzTV
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Docker Compose with MySQL
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: ersatztv
+      MYSQL_USER: ersatztv
+      MYSQL_PASSWORD: etvpassword
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  ersatztv:
+    image: ersatztv/ersatztv:latest
+    depends_on:
+      - mysql
+    ports:
+      - "8409:8409"
+    environment:
+      - ETV_CONFIG_FOLDER=/config
+      - ETV_TRANSCODE_FOLDER=/transcode
+    volumes:
+      - ./config:/config
+      - ./transcode:/transcode
+      - ./appsettings.json:/app/appsettings.json:ro
+      - /media:/media:ro
+
+volumes:
+  mysql-data:
+```
+
+**appsettings.json:**
+```json
+{
+  "provider": "MySql",
+  "MySql": {
+    "ConnectionString": "Server=mysql;Database=ersatztv;User=ersatztv;Password=etvpassword;"
+  }
+}
+```
+
+### Kubernetes ConfigMap
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ersatztv-config
+data:
+  ETV_CONFIG_FOLDER: "/config"
+  ETV_TRANSCODE_FOLDER: "/transcode"
+  ETV_UI_PORT: "8409"
+  ETV_STREAMING_PORT: "8409"
+---
+apiVersion: v1
+kind: Deployment
+metadata:
+  name: ersatztv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ersatztv
+  template:
+    metadata:
+      labels:
+        app: ersatztv
+    spec:
+      containers:
+      - name: ersatztv
+        image: ersatztv/ersatztv:latest
+        ports:
+        - containerPort: 8409
+        envFrom:
+        - configMapRef:
+            name: ersatztv-config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: transcode
+          mountPath: /transcode
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: ersatztv-config
+      - name: transcode
+        emptyDir: {}
+```
+
+## See Also
+
+- [Database Configuration](/configuration/database)
+- [Authentication](/configuration/authentication)
+- [FFmpeg Profiles](/configuration/ffmpeg-profiles)
+- [Installation Guide](/getting-started/installation)

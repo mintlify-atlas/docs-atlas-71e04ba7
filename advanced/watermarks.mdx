@@ -1,0 +1,391 @@
+---
+title: Watermarks
+description: Channel branding with static logos, dynamic watermarks, and advanced scheduling
+icon: image
+---
+
+Watermarks provide channel branding capabilities with flexible placement, timing, and opacity control. They can be configured at the channel level or via Deco groups.
+
+## Watermark Types
+
+ErsatzTV supports multiple watermark modes defined in `ChannelWatermarkMode`:
+
+### Permanent Watermarks
+
+Always-visible watermarks with static opacity:
+
+```yaml
+mode: Permanent
+opacity: 80
+```
+
+Permanent watermarks display continuously throughout all content with the specified opacity percentage.
+
+### Intermittent Watermarks
+
+Periodically appearing watermarks:
+
+```yaml
+mode: Intermittent
+frequency_minutes: 5
+duration_seconds: 10
+opacity: 100
+```
+
+**Properties:**
+- `frequency_minutes` - How often the watermark appears
+- `duration_seconds` - How long it stays visible
+- `opacity` - Maximum opacity percentage
+
+The watermark automatically fades in/out with 1-second transitions.
+
+Reference: `WatermarkElement.cs:42-56`
+
+### Opacity Expression Mode
+
+Dynamic opacity control using mathematical expressions:
+
+```yaml
+mode: OpacityExpression
+opacity_expression: "LinearFadeDuration(content_seconds, 0, 2, 5)"
+```
+
+Supports the same expression system as [graphics elements](/advanced/graphics-engine#opacity-expressions).
+
+## Watermark Configuration
+
+Watermarks are configured through the `ChannelWatermark` domain model:
+
+### Basic Properties
+
+```yaml
+name: "Main Channel Logo"
+image_source: Custom
+image: "/config/watermarks/logo.png"
+location: BottomRight
+size: Scaled
+width_percent: 15
+opacity: 80
+z_index: 10
+```
+
+**Configuration Options:**
+
+- `name` - Descriptive name for the watermark
+- `mode` - Display mode (see [Watermark Types](#watermark-types))
+- `image_source` - Image source type:
+  - `Custom` - User-provided image
+  - `ChannelLogo` - Use channel's configured logo
+  - `Resource` - Built-in resource image
+- `image` - Path to image file (for Custom source)
+- `original_content_type` - MIME type of the image
+- `location` - Position on screen
+- `size` - Sizing mode
+- `z_index` - Layer ordering (higher = on top)
+
+Reference: `ChannelWatermark.cs:6-36`
+
+### Positioning
+
+Control watermark placement with precision:
+
+#### Location Presets
+
+Use predefined positions from `WatermarkLocation` enum:
+
+- `TopLeft`
+- `TopMiddle`
+- `TopRight`
+- `LeftMiddle`
+- `MiddleCenter`
+- `RightMiddle`
+- `BottomLeft`
+- `BottomMiddle`
+- `BottomRight`
+
+Reference: `WatermarkState.cs:25-36`
+
+#### Margins
+
+Fine-tune position with percentage-based margins:
+
+```yaml
+location: TopRight
+horizontal_margin_percent: 2.5
+vertical_margin_percent: 2.0
+```
+
+- `horizontal_margin_percent` - Distance from left/right edge
+- `vertical_margin_percent` - Distance from top/bottom edge
+
+Reference: `ChannelWatermark.cs:17-18`
+
+#### Source Content Placement
+
+Position watermark within the actual video content area (excluding letterboxing/pillarboxing):
+
+```yaml
+place_within_source_content: true
+```
+
+Useful for maintaining consistent positioning across different aspect ratios.
+
+Reference: `ChannelWatermark.cs:22`
+
+### Sizing
+
+Control watermark size with `WatermarkSize` enum:
+
+#### Scaled Mode
+
+Scale watermark proportionally as a percentage of frame width:
+
+```yaml
+size: Scaled
+width_percent: 15
+```
+
+The watermark maintains aspect ratio while fitting within the specified width.
+
+Reference: `WatermarkState.cs:38-42`
+
+#### Actual Size Mode
+
+Display watermark at its original dimensions:
+
+```yaml
+size: ActualSize
+```
+
+No scaling applied - useful for pixel-perfect logos.
+
+## Watermark Scheduling
+
+Watermarks can be associated with different scheduling contexts:
+
+### Channel-Level Watermarks
+
+Apply to all content on a channel:
+
+- Global channel watermark configuration
+- Always active unless overridden
+
+### Schedule Item Watermarks
+
+Attach to specific program schedule items:
+
+```csharp
+List<ProgramScheduleItem> ProgramScheduleItems
+List<ProgramScheduleItemWatermark> ProgramScheduleItemWatermarks
+```
+
+Reference: `ChannelWatermark.cs:26-27`
+
+### Playout Item Watermarks
+
+Dynamic watermark assignment during playout:
+
+```csharp
+List<PlayoutItem> PlayoutItems
+List<PlayoutItemWatermark> PlayoutItemWatermarks
+```
+
+Reference: `ChannelWatermark.cs:24-25`
+
+### Block Item Watermarks
+
+Watermarks for block-scheduled content:
+
+```csharp
+List<BlockItem> BlockItems
+List<BlockItemWatermark> BlockItemWatermarks
+```
+
+Reference: `ChannelWatermark.cs:28-29`
+
+## Deco Group Watermarks
+
+Watermarks can be managed through Deco (decoration) groups for advanced scheduling:
+
+```csharp
+public class DecoWatermark
+{
+    public int DecoId { get; set; }
+    public Deco Deco { get; set; }
+    public int WatermarkId { get; set; }
+    public ChannelWatermark Watermark { get; set; }
+}
+```
+
+Reference: `DecoWatermark.cs:5-11`
+
+### Deco Watermark Configuration
+
+Decos support:
+
+```csharp
+public DecoMode WatermarkMode { get; set; }
+public List<ChannelWatermark> Watermarks { get; set; }
+public List<DecoWatermark> DecoWatermarks { get; set; }
+public bool UseWatermarkDuringFiller { get; set; }
+```
+
+Reference: `Deco.cs:12-15`
+
+**Filler Behavior:**
+
+The `UseWatermarkDuringFiller` flag controls whether the watermark displays during [filler content](/advanced/filler-content):
+
+- `true` - Watermark visible during filler
+- `false` - Watermark hidden during filler
+
+## Multiple Watermarks
+
+Layer multiple watermarks with different configurations:
+
+```yaml
+watermarks:
+  - name: "Main Logo"
+    location: BottomRight
+    mode: Permanent
+    z_index: 10
+    
+  - name: "Seasonal Badge"
+    location: TopRight
+    mode: Intermittent
+    frequency_minutes: 10
+    duration_seconds: 15
+    z_index: 15
+    
+  - name: "Now Playing Bug"
+    location: TopLeft
+    mode: OpacityExpression
+    opacity_expression: "LinearFadeDuration(content_seconds, 0, 1, 10)"
+    z_index: 5
+```
+
+### Z-Index Layering
+
+Control stacking order:
+
+```yaml
+z_index: 10  # Higher values appear on top
+```
+
+Watermarks compose with other graphics elements based on their z-index values.
+
+Reference: `ChannelWatermark.cs:32`, `GraphicsEngine.cs:102-108`
+
+## Watermark Image Sources
+
+Three image source modes via `ChannelWatermarkImageSource` enum:
+
+### Custom Images
+
+User-provided watermark files:
+
+```yaml
+image_source: Custom
+image: "/path/to/watermark.png"
+```
+
+### Channel Logo
+
+Automatically use channel's configured logo:
+
+```yaml
+image_source: ChannelLogo
+```
+
+### Resource Images
+
+Built-in watermark resources:
+
+```yaml
+image_source: Resource
+```
+
+Reference: `ChannelWatermark.cs:46-52`
+
+## Best Practices
+
+### Image Format
+
+- **Use PNG** with transparency for non-rectangular logos
+- **Optimize file size** without sacrificing quality
+- **Pre-scale images** to approximate target resolution
+
+### Placement
+
+- **Avoid content areas** where important information displays
+- **Consider safe margins** (2-5% from edges)
+- **Test across aspect ratios** with `place_within_source_content`
+
+### Opacity
+
+- **50-80% opacity** balances visibility with content
+- **Higher opacity** (80-100%) for subtle/transparent logos
+- **Use expressions** for dynamic behavior during specific content
+
+### Performance
+
+- **Scaled mode** is efficient for most use cases
+- **Actual size** reduces processing but may look poor at different resolutions
+- **Intermittent mode** reduces constant rendering load
+
+## Common Patterns
+
+### TV Network Bug
+
+Traditional corner logo:
+
+```yaml
+name: "Network Bug"
+mode: Permanent
+location: BottomRight
+size: Scaled
+width_percent: 12
+opacity: 75
+horizontal_margin_percent: 2
+vertical_margin_percent: 2
+place_within_source_content: true
+z_index: 10
+```
+
+### Promotional Watermark
+
+Periodic promotional overlay:
+
+```yaml
+name: "Promo Bug"
+mode: Intermittent
+frequency_minutes: 15
+duration_seconds: 20
+location: TopRight
+size: Scaled
+width_percent: 20
+opacity: 90
+z_index: 15
+```
+
+### Content Rating
+
+Fades in at content start:
+
+```yaml
+name: "Rating"
+mode: OpacityExpression
+opacity_expression: "LinearFadeDuration(content_seconds, 5, 1, 10)"
+location: TopLeft
+size: Scaled
+width_percent: 8
+z_index: 20
+```
+
+<Tip>
+When using opacity expressions, the engine skips rendering when opacity reaches 0, improving performance.
+</Tip>
+
+<Note>
+Watermarks use the same graphics engine as other overlays. See [Graphics Engine](/advanced/graphics-engine) for detailed rendering information.
+</Note>

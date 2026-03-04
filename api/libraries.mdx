@@ -1,0 +1,321 @@
+---
+title: 'Libraries'
+description: 'Scan and manage media libraries'
+---
+
+## Overview
+
+Libraries in ErsatzTV index and organize media files from local storage, Plex, Jellyfin, and Emby. The Libraries API enables automated scanning and management of media sources.
+
+## Scan Library
+
+Trigger a full scan of a media library to index new content.
+
+```bash
+POST /api/libraries/{id}/scan
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The library ID to scan
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="integer">
+  - `200 OK` - Library scan queued successfully
+  - `404 Not Found` - Library does not exist
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:8409/api/libraries/1/scan
+```
+
+### Scan Behavior
+
+- Scans are queued and run asynchronously
+- Only one scan per library runs at a time
+- New media is automatically indexed
+- Metadata is refreshed for existing media
+- Missing media is moved to trash
+
+<Note>
+  Library scans can be resource-intensive for large libraries. Consider scheduling scans during off-peak hours.
+</Note>
+
+## Scan Show
+
+Scan a specific TV show within a library for new episodes.
+
+```bash
+POST /api/libraries/{id}/scan-show
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The library ID containing the show
+</ParamField>
+
+### Request Body
+
+<ParamField body="showTitle" type="string" required>
+  The exact title of the TV show to scan
+</ParamField>
+
+<ParamField body="deepScan" type="boolean" default={false}>
+  Perform a deep scan that re-processes all episodes
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="integer">
+  - `200 OK` - Show scan queued successfully
+  - `400 Bad Request` - Invalid request or show not found
+  - `404 Not Found` - Library does not exist
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:8409/api/libraries/1/scan-show \
+  -H "Content-Type: application/json" \
+  -d '{
+    "showTitle": "Breaking Bad",
+    "deepScan": false
+  }'
+```
+
+### Example Response (Success)
+
+```
+200 OK
+```
+
+### Example Response (Error)
+
+```json
+{
+  "error": "Unable to locate show with title Breaking Bad in library 1"
+}
+```
+
+### Deep Scan
+
+When `deepScan` is `true`:
+
+- All episodes are re-scanned, even if already indexed
+- Metadata is refreshed from source
+- Useful for fixing metadata issues or re-extracting subtitles
+- Takes longer than a standard scan
+
+<Warning>
+  Deep scans can take significantly longer for shows with many episodes. Use sparingly.
+</Warning>
+
+## Implementation Details
+
+From `ErsatzTV/Controllers/Api/LibrariesController.cs:23-43`:
+
+```csharp
+public async Task<IActionResult> ScanShow(int id, [FromBody] ScanShowRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.ShowTitle))
+    {
+        return new BadRequestObjectResult(new { error = "ShowTitle is required" });
+    }
+    
+    string trimmedTitle = request.ShowTitle.Trim();
+    Option<int> maybeShowId = await televisionRepository.GetShowIdByTitle(id, trimmedTitle);
+    
+    foreach (int showId in maybeShowId)
+    {
+        bool result = await mediator.Send(
+            new QueueShowScanByLibraryId(id, showId, trimmedTitle, request.DeepScan)
+        );
+        
+        return result
+            ? new OkResult()
+            : new BadRequestObjectResult(new { 
+                error = "Unable to queue show scan. Library may not exist, may not support single show scanning, or may already be scanning." 
+              });
+    }
+    
+    return new BadRequestObjectResult(
+        new { error = $"Unable to locate show with title {request.ShowTitle} in library {id}" }
+    );
+}
+```
+
+## Library Types
+
+ErsatzTV supports multiple library types:
+
+<CardGroup cols={2}>
+  <Card title="Local Libraries" icon="folder">
+    Media files from local or network storage
+  </Card>
+  
+  <Card title="Plex Libraries" icon="plex">
+    Content from Plex Media Server
+  </Card>
+  
+  <Card title="Jellyfin Libraries" icon="jellyfin">
+    Content from Jellyfin Media Server
+  </Card>
+  
+  <Card title="Emby Libraries" icon="emby">
+    Content from Emby Media Server
+  </Card>
+</CardGroup>
+
+### Library Compatibility
+
+| Feature | Local | Plex | Jellyfin | Emby |
+|---------|-------|------|----------|------|
+| Full Scan | ✅ | ✅ | ✅ | ✅ |
+| Show Scan | ✅ | ✅ | ✅ | ✅ |
+| Deep Scan | ✅ | ✅ | ✅ | ✅ |
+| Auto Scan | ✅ | ❌ | ❌ | ❌ |
+
+<Info>
+  Single show scanning is supported for all library types, but the show must already exist in the library.
+</Info>
+
+## Automatic Scanning
+
+For local libraries, ErsatzTV can automatically detect and scan new media files:
+
+1. Navigate to **Settings** > **Libraries**
+2. Select a local library
+3. Enable **Scan Automatically**
+4. Configure scan interval
+
+<Note>
+  Automatic scanning uses file system watchers for local libraries. Remote libraries (Plex, Jellyfin, Emby) must be scanned manually or via API.
+</Note>
+
+## Scan Status
+
+Monitor library scan status through the web UI:
+
+1. Navigate to **Libraries**
+2. Check the **Status** column
+3. View detailed progress in scan logs
+
+States:
+- **Idle** - No scan in progress
+- **Scanning** - Active scan
+- **Queued** - Scan queued, waiting to start
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Schedule Scans" icon="clock">
+    Use cron jobs or scheduled tasks to scan libraries during off-peak hours
+  </Card>
+  
+  <Card title="Incremental Scans" icon="forward-step">
+    For large libraries, use show-specific scans instead of full library scans
+  </Card>
+  
+  <Card title="Monitor Resources" icon="gauge">
+    Library scans can be CPU and I/O intensive
+  </Card>
+  
+  <Card title="Check Logs" icon="file-lines">
+    Review scan logs to identify and resolve issues
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+Common scan errors:
+
+### Show Not Found
+
+```json
+{
+  "error": "Unable to locate show with title Friends in library 1"
+}
+```
+
+**Solution**: Verify the exact show title. Titles are case-sensitive and must match exactly.
+
+### Library Not Found
+
+```
+404 Not Found
+```
+
+**Solution**: Confirm the library ID is correct. Use the web UI to find valid library IDs.
+
+### Scan Already In Progress
+
+```json
+{
+  "error": "Unable to queue show scan. Library may not exist, may not support single show scanning, or may already be scanning."
+}
+```
+
+**Solution**: Wait for the current scan to complete before starting a new one.
+
+## Automation Examples
+
+### Nightly Library Scan (Bash)
+
+```bash
+#!/bin/bash
+
+# Scan library ID 1 nightly at 2 AM
+curl -X POST http://localhost:8409/api/libraries/1/scan
+```
+
+Add to crontab:
+```
+0 2 * * * /path/to/scan-library.sh
+```
+
+### Scan Specific Show After Download (Python)
+
+```python
+import requests
+
+def scan_show(library_id, show_title):
+    url = f"http://localhost:8409/api/libraries/{library_id}/scan-show"
+    payload = {
+        "showTitle": show_title,
+        "deepScan": False
+    }
+    
+    response = requests.post(url, json=payload)
+    
+    if response.status_code == 200:
+        print(f"Scan queued for {show_title}")
+    else:
+        print(f"Error: {response.json().get('error', 'Unknown error')}")
+
+# Call after new episodes are downloaded
+scan_show(1, "The Office")
+```
+
+## Related Endpoints
+
+- [Media Items API](/api/media-items) - Query indexed media
+- [Collections API](/api/collections) - Manage media collections
+- [Maintenance API](#) - Empty trash and clean up media
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Media Items" icon="film" href="/api/media-items">
+    Query and browse indexed media content
+  </Card>
+  
+  <Card title="Collections" icon="layer-group" href="/api/collections">
+    Create collections from scanned media
+  </Card>
+</CardGroup>

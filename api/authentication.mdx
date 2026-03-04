@@ -1,0 +1,226 @@
+---
+title: 'Authentication'
+description: 'Authenticating API requests with JWT and OIDC'
+---
+
+## Authentication Methods
+
+ErsatzTV supports two authentication methods for API access:
+
+1. **JWT (JSON Web Tokens)** - Recommended for API integrations
+2. **OpenID Connect (OIDC)** - For web-based authentication flows
+
+## JWT Authentication
+
+### Enabling JWT
+
+JWT authentication is configured via environment variables:
+
+```bash
+JWT_ENABLED=true
+JWT_SECRET_KEY=your-secret-key-here
+```
+
+<Warning>
+  Use a strong, randomly generated secret key. Anyone with this key can generate valid tokens.
+</Warning>
+
+### Generating JWT Tokens
+
+JWT tokens must be signed with your `JWT_SECRET_KEY` using the HS256 algorithm. The token does not require specific claims for issuer or audience validation.
+
+**Token Requirements:**
+- Algorithm: `HS256`
+- Signing key: Value of `JWT_SECRET_KEY`
+- Must include standard `exp` (expiration) claim for lifetime validation
+
+**Example using Python with PyJWT:**
+
+```python
+import jwt
+import datetime
+
+secret_key = "your-secret-key-here"
+
+payload = {
+    "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+}
+
+token = jwt.encode(payload, secret_key, algorithm="HS256")
+print(token)
+```
+
+**Example using Node.js with jsonwebtoken:**
+
+```javascript
+const jwt = require('jsonwebtoken');
+
+const secretKey = 'your-secret-key-here';
+
+const token = jwt.sign(
+  { exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) },
+  secretKey,
+  { algorithm: 'HS256' }
+);
+
+console.log(token);
+```
+
+### Using JWT Tokens
+
+Include the JWT token in API requests using one of these methods:
+
+#### Bearer Token (Recommended)
+
+```bash
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  http://localhost:8409/api/channels
+```
+
+#### Query Parameter
+
+For streaming endpoints and clients that don't support headers:
+
+```bash
+curl http://localhost:8409/iptv/channels.m3u?access_token=YOUR_JWT_TOKEN
+```
+
+The `access_token` query parameter is automatically extracted and validated by the JWT middleware:
+
+```csharp
+OnMessageReceived = context =>
+{
+    StringValues token = context.Request.Query["access_token"];
+    if (!string.IsNullOrWhiteSpace(token))
+    {
+        context.Token = token;
+    }
+    return Task.CompletedTask;
+}
+```
+
+## OpenID Connect (OIDC)
+
+### Enabling OIDC
+
+OIDC is configured via environment variables:
+
+```bash
+OIDC_ENABLED=true
+OIDC_AUTHORITY=https://your-oidc-provider.com
+OIDC_CLIENT_ID=your-client-id
+OIDC_CLIENT_SECRET=your-client-secret
+OIDC_LOGOUT_URI=https://your-oidc-provider.com/logout  # Optional
+```
+
+### OIDC Configuration
+
+ErsatzTV uses the Authorization Code flow with PKCE:
+
+- **Response Type**: `code`
+- **Response Mode**: `query`
+- **Scope**: `openid`
+- **Callback Path**: `/callback`
+- **PKCE**: Enabled
+
+From `Startup.cs:186-221`:
+
+```csharp
+.AddOpenIdConnect("oidc", options =>
+{
+    options.Authority = OidcHelper.Authority;
+    options.ClientId = OidcHelper.ClientId;
+    options.ClientSecret = OidcHelper.ClientSecret;
+    options.ResponseType = OpenIdConnectResponseType.Code;
+    options.UsePkce = true;
+    options.ResponseMode = OpenIdConnectResponseMode.Query;
+    options.Scope.Clear();
+    options.Scope.Add("openid");
+    options.CallbackPath = new PathString("/callback");
+    options.SaveTokens = true;
+});
+```
+
+### Cookie-Based Sessions
+
+When OIDC is enabled, successful authentication creates a secure cookie session:
+
+- **Cookie settings**: `HttpOnly`, `SameSite=None`, `Secure`
+- **Default scheme**: `cookie`
+- **Challenge scheme**: `oidc`
+
+## Combined Authentication
+
+Both JWT and OIDC can be enabled simultaneously. The authorization policy allows either authentication method:
+
+```csharp
+var defaultAuthorizationPolicyBuilder = new AuthorizationPolicyBuilder(
+    "cookie",
+    "oidc"
+);
+```
+
+For JWT-only endpoints, use the `JwtOnlyScheme` policy.
+
+## IPTV Endpoint Authentication
+
+IPTV endpoints (M3U playlists, XMLTV guides, streaming URLs) support optional authentication via the `ConditionalIptvAuthorizeFilter`:
+
+```csharp
+[ServiceFilter(typeof(ConditionalIptvAuthorizeFilter))]
+public class IptvController : StreamingControllerBase
+```
+
+When authentication is enabled, include the `access_token` parameter in streaming URLs:
+
+```
+http://localhost:8409/iptv/channels.m3u?access_token=YOUR_JWT_TOKEN
+http://localhost:8409/iptv/channel/1.m3u8?access_token=YOUR_JWT_TOKEN
+```
+
+## HDHomeRun Endpoints
+
+HDHomeRun endpoints (`/device.xml`, `/discover.json`, `/lineup.json`) do not require authentication and are always publicly accessible.
+
+## Logout
+
+For OIDC sessions, logout via:
+
+```bash
+POST /account/logout
+```
+
+This signs out of both the `oidc` and `cookie` schemes and redirects to the configured `OIDC_LOGOUT_URI` if provided.
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use HTTPS" icon="lock">
+    Always use HTTPS in production to protect tokens in transit
+  </Card>
+  <Card title="Rotate Secrets" icon="key">
+    Periodically rotate JWT secret keys and update tokens
+  </Card>
+  <Card title="Short Expiration" icon="clock">
+    Use reasonable token expiration times (e.g., 24 hours)
+  </Card>
+  <Card title="Secure Storage" icon="shield">
+    Never commit secrets to version control or expose them publicly
+  </Card>
+</CardGroup>
+
+## Testing Authentication
+
+Test your authentication setup:
+
+```bash
+# Without authentication (should fail if auth is enabled)
+curl http://localhost:8409/api/channels
+
+# With JWT Bearer token
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  http://localhost:8409/api/channels
+
+# With access_token parameter
+curl "http://localhost:8409/api/channels?access_token=YOUR_JWT_TOKEN"
+```

@@ -1,0 +1,319 @@
+---
+title: Classic Schedules
+description: Time-slot based scheduling with fixed or dynamic start times
+---
+
+Classic schedules provide traditional time-slot based scheduling, similar to conventional TV programming. Each schedule consists of a series of items that play in order, with support for both fixed and dynamic start times.
+
+## Creating a Classic Schedule
+
+Classic schedules are managed through the web UI under **Scheduling > Program Schedules**.
+
+## Schedule Configuration
+
+The `ProgramSchedule` model (ErsatzTV.Core/Domain/ProgramSchedule.cs:5) supports the following options:
+
+<ParamField path="Name" type="string" required>
+  The name of your schedule
+</ParamField>
+
+<ParamField path="KeepMultiPartEpisodesTogether" type="boolean" default={false}>
+  When enabled, multi-part episodes will always play together even if shuffled
+</ParamField>
+
+<ParamField path="TreatCollectionsAsShows" type="boolean" default={false}>
+  When enabled, collection items are treated as episodes of a single show for EPG purposes
+</ParamField>
+
+<ParamField path="ShuffleScheduleItems" type="boolean" default={false}>
+  Shuffle the order of schedule items themselves (not the content within items)
+</ParamField>
+
+<ParamField path="RandomStartPoint" type="boolean" default={false}>
+  Start playback at a random point in the schedule
+</ParamField>
+
+<ParamField path="FixedStartTimeBehavior" type="enum">
+  Controls how fixed-time items behave when they can't start exactly on time
+  
+  - `Strict` (0) - Must start exactly on time
+  - `Flexible` (1) - Can start late if previous content overruns
+</ParamField>
+
+## Schedule Items
+
+Each schedule contains multiple `ProgramScheduleItem` objects. There are three types:
+
+### One Item
+
+`ProgramScheduleItemOne` plays a single item from the collection.
+
+### Multiple Items
+
+`ProgramScheduleItemMultiple` (ErsatzTV.Core/Domain/ProgramScheduleItemMultiple.cs:3) plays multiple items based on a mode:
+
+<Tabs>
+  <Tab title="Count Mode">
+    Play a fixed number of items:
+    
+    ```json
+    {
+      "MultipleMode": 0,
+      "Count": "5"
+    }
+    ```
+  </Tab>
+  
+  <Tab title="CollectionSize Mode">
+    Play all items from the collection:
+    
+    ```json
+    {
+      "MultipleMode": 1
+    }
+    ```
+  </Tab>
+  
+  <Tab title="PlaylistItemSize Mode">
+    Play all items from a playlist item:
+    
+    ```json
+    {
+      "MultipleMode": 2
+    }
+    ```
+  </Tab>
+  
+  <Tab title="MultiEpisodeGroupSize Mode">
+    Play all linked multi-part episodes:
+    
+    ```json
+    {
+      "MultipleMode": 3
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Duration Items
+
+`ProgramScheduleItemDuration` (ErsatzTV.Core/Domain/ProgramScheduleItemDuration.cs:3) fills a specific duration with content:
+
+<ParamField path="PlayoutDuration" type="TimeSpan" required>
+  The duration to fill with content
+</ParamField>
+
+<ParamField path="TailMode" type="enum">
+  What to do when content doesn't exactly fill the duration
+  
+  - `None` (0) - Stop scheduling, leave gap
+  - `Offline` (1) - Show offline slate
+  - `Slate` (2) - Show custom slate
+  - `Filler` (3) - Use filler content
+</ParamField>
+
+<ParamField path="DiscardToFillAttempts" type="int" default={0}>
+  How many times to try finding content that fits before giving up
+</ParamField>
+
+## Schedule Item Properties
+
+All schedule items (ErsatzTV.Core/Domain/ProgramScheduleItem.cs:7) share common properties:
+
+### Start Time Configuration
+
+<ParamField path="StartTime" type="TimeSpan?">
+  Fixed start time (e.g., "14:30:00" for 2:30 PM). When null, the item starts dynamically after the previous item.
+</ParamField>
+
+<ParamField path="StartType" type="enum" computed>
+  Automatically determined:
+  - `Fixed` (2) - When StartTime is set
+  - `Dynamic` (1) - When StartTime is null
+</ParamField>
+
+<ParamField path="FixedStartTimeBehavior" type="enum?">
+  Override the schedule-level fixed start time behavior for this item
+</ParamField>
+
+### Content Source
+
+One of the following must be set:
+
+<ParamField path="CollectionId" type="int?">
+  Standard collection reference
+</ParamField>
+
+<ParamField path="MediaItemId" type="int?">
+  Single media item reference
+</ParamField>
+
+<ParamField path="MultiCollectionId" type="int?">
+  Multi-collection reference
+</ParamField>
+
+<ParamField path="SmartCollectionId" type="int?">
+  Smart collection reference
+</ParamField>
+
+<ParamField path="PlaylistId" type="int?">
+  Playlist reference
+</ParamField>
+
+<ParamField path="SearchQuery" type="string">
+  Ad-hoc search query
+</ParamField>
+
+### Playback Configuration
+
+<ParamField path="PlaybackOrder" type="PlaybackOrder">
+  How to order content from the collection. See [Overview](/scheduling/overview#playback-orders) for options.
+</ParamField>
+
+<ParamField path="CollectionType" type="enum">
+  The type of collection being scheduled
+</ParamField>
+
+### Marathon Options
+
+<ParamField path="MarathonGroupBy" type="enum">
+  How to group episodes in marathon mode
+</ParamField>
+
+<ParamField path="MarathonShuffleGroups" type="boolean" default={false}>
+  Shuffle the order of groups in marathon mode
+</ParamField>
+
+<ParamField path="MarathonShuffleItems" type="boolean" default={false}>
+  Shuffle items within groups in marathon mode
+</ParamField>
+
+<ParamField path="MarathonBatchSize" type="int?">
+  How many items per group in marathon mode
+</ParamField>
+
+### Filler Content
+
+Classic schedules support multiple types of filler:
+
+<ParamField path="PreRollFillerId" type="int?">
+  Filler to play before the main content
+</ParamField>
+
+<ParamField path="MidRollFillerId" type="int?">
+  Filler to play during the main content
+</ParamField>
+
+<ParamField path="PostRollFillerId" type="int?">
+  Filler to play after the main content
+</ParamField>
+
+<ParamField path="TailFillerId" type="int?">
+  Filler to use when content doesn't fill the scheduled time
+</ParamField>
+
+<ParamField path="FallbackFillerId" type="int?">
+  Filler to use when scheduled content is unavailable
+</ParamField>
+
+### Display Options
+
+<ParamField path="GuideMode" type="enum">
+  How to display this item in the EPG guide
+</ParamField>
+
+<ParamField path="CustomTitle" type="string">
+  Override the title shown in the EPG
+</ParamField>
+
+### Media Preferences
+
+<ParamField path="PreferredAudioLanguageCode" type="string">
+  Preferred audio language (e.g., "eng", "spa")
+</ParamField>
+
+<ParamField path="PreferredAudioTitle" type="string">
+  Preferred audio track by title
+</ParamField>
+
+<ParamField path="PreferredSubtitleLanguageCode" type="string">
+  Preferred subtitle language
+</ParamField>
+
+<ParamField path="SubtitleMode" type="enum?">
+  Subtitle display mode
+</ParamField>
+
+### Graphics and Watermarks
+
+<ParamField path="Watermarks" type="List<ChannelWatermark>">
+  Watermarks to display during this item
+</ParamField>
+
+<ParamField path="GraphicsElements" type="List<GraphicsElement>">
+  Graphics overlays to display during this item
+</ParamField>
+
+<ParamField path="FillWithGroupMode" type="enum">
+  Controls fill group behavior
+</ParamField>
+
+## Example Schedule
+
+<Steps>
+  <Step title="Morning News Block">
+    Fixed start at 06:00, play 3 news episodes chronologically
+    
+    - Start Time: `06:00:00`
+    - Collection: Morning News
+    - Multiple Mode: Count = 3
+    - Playback Order: Chronological
+  </Step>
+  
+  <Step title="Cartoons Block">
+    Fixed start at 08:00, fill 2 hours with cartoons
+    
+    - Start Time: `08:00:00`
+    - Collection: Saturday Cartoons
+    - Duration: 2 hours
+    - Playback Order: Shuffle
+    - Tail Mode: Filler
+  </Step>
+  
+  <Step title="Movie">
+    Fixed start at 10:00, play one movie
+    
+    - Start Time: `10:00:00`
+    - Collection: Action Movies
+    - Item Count: 1
+    - Playback Order: Random
+  </Step>
+  
+  <Step title="TV Series Marathon">
+    Dynamic start after movie, play 5 episodes
+    
+    - Start Time: (none)
+    - Collection: Sci-Fi Series
+    - Multiple Mode: Count = 5
+    - Playback Order: Chronological
+  </Step>
+</Steps>
+
+## Alternate Schedules
+
+Classic schedules support alternates through `ProgramScheduleAlternate` (ErsatzTV.Core/Domain/ProgramScheduleAlternate.cs), which allows switching between different schedules based on date ranges or other criteria.
+
+<Note>
+  Schedule items are played in order by their `Index` property. Use the web UI to reorder items by dragging and dropping.
+</Note>
+
+## Context Tracking
+
+Classic schedules use `ClassicSchedulingContext` (ErsatzTV.Core/Scheduling/ClassicSchedulingContext.cs:3) to track:
+
+- Current schedule and item being played
+- Enumerator state (position in collection)
+- Random seed for reproducible randomization
+- Index within the current collection
+
+This context is saved as part of the playout anchor to resume correctly after restarts.

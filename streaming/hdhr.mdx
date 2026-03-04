@@ -1,0 +1,431 @@
+---
+title: HDHomeRun Protocol
+description: Emulate HDHomeRun devices for seamless integration with compatible clients
+---
+
+ErsatzTV emulates the HDHomeRun device protocol, allowing compatible clients like Plex, Emby, Jellyfin, and Channels DVR to discover and use your ErsatzTV channels as if they were physical HDHomeRun tuners.
+
+## Overview
+
+The HDHomeRun (HDHR) protocol support provides:
+
+- **Device discovery**: Automatic detection by compatible clients
+- **Device emulation**: Mimics HDHomeRun ATSC tuner hardware
+- **Channel lineup**: Standard HDHomeRun lineup format
+- **Stream compatibility**: Direct access to ErsatzTV channels
+
+## Discovery Protocol
+
+### Device Discovery Endpoint
+
+Clients can discover ErsatzTV as an HDHomeRun device:
+
+```
+GET /discover.json
+```
+
+**Response Format:**
+
+```json
+{
+  "DeviceAuth": "",
+  "DeviceID": "12345678-1234-1234-1234-123456789012",
+  "FirmwareName": "hdhomeruntc_atsc",
+  "FirmwareVersion": "20190621",
+  "FriendlyName": "ErsatzTV",
+  "LineupURL": "http://localhost:8409/lineup.json",
+  "Manufacturer": "ErsatzTV",
+  "ManufacturerURL": "https://github.com/ErsatzTV/ErsatzTV",
+  "ModelNumber": "HDTC-2US",
+  "TunerCount": 4
+}
+```
+
+<ResponseField name="DeviceID" type="string">
+  Unique device identifier (UUID) for this ErsatzTV instance
+</ResponseField>
+
+<ResponseField name="FriendlyName" type="string">
+  Device name displayed in clients (always "ErsatzTV")
+</ResponseField>
+
+<ResponseField name="LineupURL" type="string">
+  URL to the channel lineup endpoint
+</ResponseField>
+
+<ResponseField name="ModelNumber" type="string">
+  Emulated HDHomeRun model (HDTC-2US - dual tuner ATSC model)
+</ResponseField>
+
+<ResponseField name="TunerCount" type="integer">
+  Number of virtual tuners available (configurable in settings)
+</ResponseField>
+
+### Device XML Descriptor
+
+UPnP-compatible device descriptor:
+
+```
+GET /device.xml
+```
+
+**Response Format (XML):**
+
+```xml
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <URLBase>http://localhost:8409</URLBase>
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+    <friendlyName>ErsatzTV</friendlyName>
+    <manufacturer>Silicondust</manufacturer>
+    <modelName>HDTC-2US</modelName>
+    <modelNumber>HDTC-2US</modelNumber>
+    <serialNumber>12345678-1234-1234-1234-123456789012</serialNumber>
+    <UDN>uuid:12345678-1234-1234-1234-123456789012</UDN>
+  </device>
+</root>
+```
+
+<Note>
+The device descriptor identifies ErsatzTV as a "Silicondust" HDHomeRun for maximum client compatibility.
+</Note>
+
+## Channel Lineup
+
+### Lineup Endpoint
+
+Retrieve the complete channel lineup:
+
+```
+GET /lineup.json
+```
+
+**Response Format:**
+
+```json
+[
+  {
+    "GuideNumber": "1",
+    "GuideName": "Channel 1",
+    "VideoCodec": "H264",
+    "AudioCodec": "AAC",
+    "URL": "http://localhost:8409/iptv/hdhr/channel/1.ts"
+  },
+  {
+    "GuideNumber": "2.1",
+    "GuideName": "Channel 2.1",
+    "VideoCodec": "HEVC",
+    "AudioCodec": "AC3",
+    "URL": "http://localhost:8409/iptv/hdhr/channel/2.1.ts"
+  }
+]
+```
+
+<ResponseField name="GuideNumber" type="string">
+  Channel number (supports sub-channels like "2.1")
+</ResponseField>
+
+<ResponseField name="GuideName" type="string">
+  Channel name as displayed in the guide
+</ResponseField>
+
+<ResponseField name="VideoCodec" type="string">
+  Video codec: H264, HEVC, MPEG2, or AV1
+</ResponseField>
+
+<ResponseField name="AudioCodec" type="string">
+  Audio codec: AAC, AC3, or AACLATM
+</ResponseField>
+
+<ResponseField name="URL" type="string">
+  Direct stream URL for this channel
+</ResponseField>
+
+### Lineup Status
+
+Check lineup scanning status:
+
+```
+GET /lineup_status.json
+```
+
+**Response Format:**
+
+```json
+{
+  "ScanInProgress": 0,
+  "ScanPossible": 1,
+  "Source": "Cable",
+  "SourceList": ["Cable"]
+}
+```
+
+<ResponseField name="ScanInProgress" type="integer">
+  Always `0` (no scan in progress)
+</ResponseField>
+
+<ResponseField name="ScanPossible" type="integer">
+  Always `1` (scanning is possible)
+</ResponseField>
+
+<ResponseField name="Source" type="string">
+  Signal source type (always "Cable" for ErsatzTV)
+</ResponseField>
+
+## Channel Streaming
+
+### HDHomeRun Stream Endpoint
+
+Stream channels using the HDHomeRun-specific endpoint:
+
+```
+GET /iptv/hdhr/channel/{channelNumber}.ts
+```
+
+<Info>
+This endpoint always uses **Transport Stream** mode for maximum compatibility with HDHomeRun clients, regardless of the `mode` query parameter.
+</Info>
+
+**Example:**
+
+```bash
+curl http://localhost:8409/iptv/hdhr/channel/1.ts
+```
+
+### Forced Transport Stream
+
+HDHomeRun clients expect MPEG-TS format, so ErsatzTV automatically:
+
+1. Overrides any streaming mode to `ts` or `ts-legacy`
+2. Returns video/mp2t content type
+3. Uses HDHomeRun-compatible stream parameters
+
+## Client Setup
+
+### Plex Live TV
+
+<Steps>
+  <Step title="Enable Network Discovery">
+    Ensure Plex can discover devices on your local network
+  </Step>
+  
+  <Step title="Add HDHomeRun Device">
+    Navigate to **Settings > Live TV & DVR > Set Up Plex DVR**
+    
+    Plex should automatically discover ErsatzTV as "ErsatzTV HDTC-2US"
+  </Step>
+  
+  <Step title="Scan Channels">
+    Click **Continue** to scan for channels
+    
+    All enabled ErsatzTV channels will be discovered
+  </Step>
+  
+  <Step title="Configure Guide">
+    Map channels to EPG data or use ErsatzTV's built-in guide
+  </Step>
+  
+  <Step title="Complete Setup">
+    Finish the wizard and start watching!
+  </Step>
+</Steps>
+
+<Tip>
+For best results with Plex, configure channels to use **Transport Stream Hybrid** streaming mode.
+</Tip>
+
+### Emby Live TV
+
+1. Navigate to **Live TV > Tuner Devices > Add/Manage**
+2. Click **+ Add** and select **HD HomeRun**
+3. Enter ErsatzTV URL: `http://your-server:8409`
+4. Click **Save** to scan channels
+5. Configure EPG and channel mappings
+
+### Jellyfin Live TV
+
+<Steps>
+  <Step title="Enable Live TV Plugin">
+    Ensure the Live TV plugin is installed and enabled
+  </Step>
+  
+  <Step title="Add Tuner Device">
+    Navigate to **Dashboard > Live TV > Tuner Devices**
+    
+    Select **HD HomeRun** as the tuner type
+  </Step>
+  
+  <Step title="Enter Device URL">
+    URL: `http://your-server:8409`
+    
+    Click **Save** and scan for channels
+  </Step>
+  
+  <Step title="Configure Guide">
+    Set up XMLTV guide source or use ErsatzTV's EPG
+  </Step>
+</Steps>
+
+### Channels DVR
+
+Channels DVR has excellent HDHomeRun support:
+
+1. Open Channels DVR web interface
+2. Navigate to **Settings > TV Sources**
+3. Click **Add Source > HDHomeRun**
+4. Channels will auto-discover ErsatzTV
+5. Select "ErsatzTV" from discovered devices
+6. Import channels and guide data
+
+<Note>
+Channels DVR may limit the number of simultaneous streams based on the reported tuner count. Adjust tuner count in ErsatzTV settings if needed.
+</Note>
+
+## Configuration
+
+### Tuner Count
+
+Configure the number of virtual tuners reported to clients:
+
+<CodeGroup>
+```sql Update via Database
+UPDATE Configuration 
+SET HDHomeRunTunerCount = 6 
+WHERE Id = 1;
+```
+
+```bash Restart After Change
+sudo systemctl restart ersatztv
+```
+</CodeGroup>
+
+<Warning>
+Changing tuner count requires an application restart. Most clients cache device information, so you may need to re-scan devices in client settings.
+</Warning>
+
+### Device UUID
+
+ErsatzTV generates a persistent UUID on first run. This identifier is used across all HDHomeRun endpoints and ensures clients recognize the device consistently.
+
+**UUID Generation:**
+- Automatically created on first startup
+- Stored in application database
+- Remains consistent across restarts
+- Used in device discovery and XML descriptor
+
+## Streaming Behavior
+
+### Content Type
+
+All HDHomeRun streams return `video/mp2t` (MPEG Transport Stream) content type for compatibility.
+
+### Mode Override
+
+The HDHomeRun endpoint automatically handles streaming mode:
+
+```csharp
+public Task<IActionResult> GetHDHRVideo(string channelNumber, [FromQuery] string mode = "ts")
+{
+    // Force ts mode for HDHR clients
+    if (mode != "ts" && mode != "ts-legacy")
+    {
+        mode = "ts";
+    }
+    
+    return GetTransportStreamVideo(channelNumber, mode);
+}
+```
+
+### Channel Number Format
+
+Supports standard and sub-channel numbering:
+- `1` - Single digit channel
+- `2.1` - Sub-channel format
+- `100` - Multi-digit channel
+- `5.10` - Multi-digit sub-channel
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Client not discovering ErsatzTV">
+    **Possible causes:**
+    - ErsatzTV not running or not accessible on network
+    - Firewall blocking port 8409
+    - Client and ErsatzTV on different subnets
+    
+    **Solutions:**
+    - Verify ErsatzTV is accessible: `curl http://your-server:8409/discover.json`
+    - Check firewall rules allow TCP port 8409
+    - Manually add device URL in client settings
+    - Ensure both devices on same network/VLAN
+  </Accordion>
+  
+  <Accordion title="Channels not appearing in lineup">
+    **Check:**
+    - Channels are enabled in ErsatzTV
+    - Channel numbers are assigned
+    - FFmpeg profiles configured correctly
+    - Access lineup directly: `curl http://your-server:8409/lineup.json`
+    
+    **Try:**
+    - Rescan channels in client
+    - Restart both ErsatzTV and client
+    - Check ErsatzTV logs for errors
+  </Accordion>
+  
+  <Accordion title="Playback issues or stream failures">
+    **Common issues:**
+    - Transcoding errors (check FFmpeg logs)
+    - Insufficient tuner count
+    - Network bandwidth limitations
+    - Hardware acceleration problems
+    
+    **Solutions:**
+    - Test direct stream: `ffplay http://your-server:8409/iptv/hdhr/channel/1.ts`
+    - Increase tuner count if client reports "all tuners in use"
+    - Review transcoding profile settings
+    - Disable hardware acceleration temporarily
+  </Accordion>
+  
+  <Accordion title="Client reports 'device offline' or 'unavailable'">
+    **Check:**
+    - ErsatzTV service is running
+    - Device UUID hasn't changed (after database reset)
+    - Network connectivity is stable
+    
+    **Fix:**
+    - Restart ErsatzTV service
+    - Remove and re-add device in client
+    - Verify discovery endpoint: `curl http://your-server:8409/discover.json`
+  </Accordion>
+</AccordionGroup>
+
+## Protocol Endpoints Summary
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/discover.json` | GET | Device discovery (JSON) |
+| `/device.xml` | GET | UPnP device descriptor (XML) |
+| `/lineup.json` | GET | Channel lineup (JSON) |
+| `/lineup_status.json` | GET | Lineup scanning status (JSON) |
+| `/iptv/hdhr/channel/{channelNumber}.ts` | GET | Stream channel (MPEG-TS) |
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="IPTV Streaming" icon="signal-stream" href="./iptv">
+    Configure IPTV playlists and streaming
+  </Card>
+  
+  <Card title="Transcoding" icon="gears" href="./transcoding">
+    Optimize FFmpeg transcoding profiles
+  </Card>
+  
+  <Card title="Hardware Acceleration" icon="microchip" href="./hardware-acceleration">
+    Enable GPU-accelerated encoding
+  </Card>
+</CardGroup>

@@ -1,0 +1,357 @@
+---
+title: Docker Setup
+description: Complete guide to deploying ErsatzTV with Docker and hardware acceleration
+---
+
+This guide covers deploying ErsatzTV using Docker, including configuration for hardware acceleration with NVIDIA, Intel QSV, and VAAPI.
+
+## Basic Docker Setup
+
+### Docker Compose (Standard)
+
+The simplest way to run ErsatzTV is with docker-compose. Create a `docker-compose.yml` file:
+
+```yaml docker-compose.yml
+services:
+    ersatztv:
+        image: jasongdove/ersatztv:latest
+        environment:
+            TZ: America/Chicago
+        ports:
+            - "8409:8409"
+        volumes:
+            - ersatztv:/config
+            - /path/to/media:/media:ro
+        tmpfs:
+            - /transcode
+volumes:
+    ersatztv:
+```
+
+<Note>
+Replace `/path/to/media` with the actual path to your media library. The `:ro` flag mounts the media as read-only for security.
+</Note>
+
+### Start the Container
+
+```bash
+docker-compose up -d
+```
+
+ErsatzTV will be available at `http://localhost:8409`
+
+## Volume Mounts
+
+### Required Volumes
+
+| Volume | Purpose | Recommended |
+|--------|---------|-------------|
+| `/config` | Configuration, database, and logs | Named volume or bind mount |
+| `/transcode` | Temporary transcoding files | tmpfs (RAM) for best performance |
+
+### Optional Volumes
+
+| Volume | Purpose |
+|--------|----------|
+| `/media` | Your media library (movies, TV shows, music) |
+
+<Warning>
+Using tmpfs for `/transcode` stores temporary files in RAM, which is much faster than disk but uses system memory. Make sure you have sufficient RAM available.
+</Warning>
+
+## Environment Variables
+
+### Core Configuration
+
+```yaml
+environment:
+    # Timezone for scheduling
+    TZ: America/Chicago
+    
+    # Custom config folder (default: /config)
+    ETV_CONFIG_FOLDER: /config
+    
+    # Custom transcode folder (default: /transcode)
+    ETV_TRANSCODE_FOLDER: /transcode
+```
+
+### Advanced Configuration
+
+```yaml
+environment:
+    # Disable Vulkan support (useful in Docker)
+    ETV_DISABLE_VULKAN: "1"
+    
+    # Multiple instance support - disambiguate EPG data
+    ETV_INSTANCE_ID: "home"
+    
+    # Trakt API support (create your own app at trakt.tv)
+    TRAKT__CLIENTID: "your-client-id"
+    
+    # Performance tuning
+    ETV_SLOW_DB_MS: "1000"      # Log slow DB queries (ms)
+    ETV_SLOW_API_MS: "1000"     # Log slow API calls (ms)
+    
+    # Jellyfin optimization
+    ETV_JF_PAGE_SIZE: "10"      # API page size for Jellyfin
+    ETV_JF_ENABLE_STATS: "1"    # Enable Jellyfin scan timing
+```
+
+<Tip>
+Set `ETV_INSTANCE_ID` if you're running multiple ErsatzTV instances to prevent EPG conflicts. The value will be included in channel identifiers before `.ersatztv.org`.
+</Tip>
+
+## Hardware Acceleration
+
+### NVIDIA GPU (NVENC)
+
+For NVIDIA GPU hardware transcoding support:
+
+```yaml docker-compose.nvidia.yml
+services:
+    ersatztv:
+        image: jasongdove/ersatztv:latest
+        privileged: true
+        environment:
+            TZ: America/Chicago
+            NVIDIA_VISIBLE_DEVICES: all
+            NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+        ports:
+            - "8409:8409"
+        volumes:
+            - ersatztv:/config
+            - /path/to/media:/media:ro
+        tmpfs:
+            - /transcode
+volumes:
+    ersatztv:
+```
+
+<Note>
+Requires:
+- NVIDIA GPU with NVENC support
+- NVIDIA Docker runtime installed (`nvidia-docker2` package)
+- Recent NVIDIA drivers (version 450+)
+</Note>
+
+#### NVIDIA Setup Steps
+
+1. **Install NVIDIA Docker runtime**:
+
+```bash
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+    sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+sudo apt-get update && sudo apt-get install -y nvidia-docker2
+sudo systemctl restart docker
+```
+
+2. **Verify GPU access**:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+```
+
+3. **Start ErsatzTV** with the nvidia compose file
+
+### Intel QSV (Quick Sync Video)
+
+For Intel integrated graphics hardware transcoding:
+
+```yaml docker-compose.qsv.yml
+services:
+    ersatztv:
+        image: jasongdove/ersatztv:latest
+        environment:
+            TZ: America/Chicago
+        devices:
+            - /dev/dri:/dev/dri
+        ports:
+            - "8409:8409"
+        volumes:
+            - ersatztv:/config
+            - /path/to/media:/media:ro
+        tmpfs:
+            - /transcode
+volumes:
+    ersatztv:
+```
+
+<Note>
+Requires:
+- Intel CPU with Quick Sync support (6th gen or newer recommended)
+- `/dev/dri` device access
+</Note>
+
+### AMD/Intel VAAPI
+
+For AMD or Intel VAAPI hardware transcoding:
+
+```yaml docker-compose.vaapi.yml
+services:
+    ersatztv:
+        image: jasongdove/ersatztv:latest
+        environment:
+            TZ: America/Chicago
+        devices:
+            - /dev/dri/renderD128:/dev/dri/renderD128
+        ports:
+            - "8409:8409"
+        volumes:
+            - ersatztv:/config
+            - /path/to/media:/media:ro
+        tmpfs:
+            - /transcode
+volumes:
+    ersatztv:
+```
+
+<Note>
+Requires:
+- AMD GPU with VAAPI support or Intel integrated graphics
+- Render device typically at `/dev/dri/renderD128` (may vary)
+</Note>
+
+#### Check Your Render Device
+
+```bash
+ls -la /dev/dri/
+```
+
+Look for `renderD128` or similar. Adjust the docker-compose file if your device path differs.
+
+### Rockchip (RKMPP)
+
+For Rockchip SoC hardware acceleration (Orange Pi 5, NanoPi R6S):
+
+```yaml docker-compose.rkmpp.yml
+services:
+    ersatztv:
+        image: jasongdove/ersatztv:latest
+        environment:
+            TZ: America/Chicago
+        devices:
+            - /dev/dri:/dev/dri
+            - /dev/mpp_service:/dev/mpp_service
+        ports:
+            - "8409:8409"
+        volumes:
+            - ersatztv:/config
+            - /path/to/media:/media:ro
+        tmpfs:
+            - /transcode
+volumes:
+    ersatztv:
+```
+
+## Network Configuration
+
+### Custom Ports
+
+To use a different port than 8409:
+
+```yaml
+ports:
+    - "9090:8409"  # Access at http://localhost:9090
+```
+
+### Base URL / Reverse Proxy
+
+If running behind a reverse proxy:
+
+```yaml
+environment:
+    ETV_BASE_URL: "/ersatztv"
+```
+
+Example nginx configuration:
+
+```nginx
+location /ersatztv/ {
+    proxy_pass http://localhost:8409/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+## Building from Source
+
+To build the Docker image from source:
+
+```bash
+git clone https://github.com/ErsatzTV/ErsatzTV.git
+cd ErsatzTV/docker
+docker-compose build
+```
+
+The Dockerfile uses multi-stage builds:
+1. **Build stage**: Compiles .NET application and generates Python API client
+2. **Runtime stage**: Uses jellyfin-ffmpeg with all codecs and hardware acceleration support
+
+## Troubleshooting
+
+### Check Container Logs
+
+```bash
+docker-compose logs -f ersatztv
+```
+
+### Verify Hardware Acceleration
+
+1. Go to **Settings** > **Troubleshooting** in the ErsatzTV web UI
+2. Check the **FFmpeg Capabilities** section
+3. Hardware encoders/decoders should be listed if properly configured
+
+### Permission Issues
+
+If you encounter permission errors accessing media:
+
+```yaml
+services:
+    ersatztv:
+        user: "1000:1000"  # Replace with your user:group ID
+```
+
+Find your user/group ID:
+
+```bash
+id
+```
+
+### Transcode Folder Space
+
+If using disk instead of tmpfs:
+
+```yaml
+volumes:
+    - /path/to/transcode:/transcode
+```
+
+Ensure the location has at least 10GB free space for temporary files.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure FFmpeg Profiles" icon="sliders" href="/configuration/ffmpeg">
+    Set up hardware acceleration in ErsatzTV
+  </Card>
+  <Card title="Create Channels" icon="tv" href="/channels/overview">
+    Start building your custom TV channels
+  </Card>
+  <Card title="Media Sources" icon="folder-open" href="/media-sources/overview">
+    Connect Plex, Jellyfin, or local libraries
+  </Card>
+  <Card title="Troubleshooting Guide" icon="wrench" href="/guides/troubleshooting">
+    Common issues and solutions
+  </Card>
+</CardGroup>

@@ -1,0 +1,116 @@
+---
+title: Introduction
+description: Transform your media library into a personalized, live TV experience
+---
+
+## What is ErsatzTV?
+
+ErsatzTV lets you transform your media library into a personalized, live TV experience - complete with EPG (Electronic Program Guide), channel scheduling, and seamless streaming to all your devices. Rediscover your content, your way.
+
+Think of ErsatzTV as your personal TV network. Instead of scrolling through endless menus looking for something to watch, you can create custom channels that play your favorite content on a schedule - just like real television.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Custom Channels" icon="tv">
+    Create and schedule your own live TV channels with full control over what plays and when
+  </Card>
+  
+  <Card title="IPTV & EPG" icon="signal-stream">
+    Stream with IPTV and Electronic Program Guide support to any compatible device
+  </Card>
+  
+  <Card title="Hardware Transcoding" icon="microchip">
+    High-performance streaming with hardware acceleration (NVENC, QSV, VAAPI, AMF, VideoToolbox, Rkmpp)
+  </Card>
+  
+  <Card title="Media Server Integration" icon="server">
+    Connect Plex, Jellyfin, Emby and local media libraries
+  </Card>
+  
+  <Card title="Advanced Scheduling" icon="calendar">
+    Multiple scheduling modes: Classic, Block, Sequential, Scripted, and JSON-based
+  </Card>
+  
+  <Card title="Open Source" icon="code">
+    Free, open, and community-driven project released under the zlib license
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Install ErsatzTV">
+    Download and set up the server on your system using Docker, standalone binaries, or build from source.
+  </Step>
+  
+  <Step title="Add Your Media">
+    Connect your Plex, Jellyfin, or Emby server, or add local media libraries and collections.
+  </Step>
+  
+  <Step title="Create Channels">
+    Design and schedule your own live channels using the powerful scheduling system.
+  </Step>
+  
+  <Step title="Stream Anywhere">
+    Watch on any device with IPTV and EPG support - from smart TVs to mobile apps.
+  </Step>
+</Steps>
+
+## Architecture
+
+ErsatzTV is built with:
+
+- **.NET 10** - Cross-platform server application
+- **FFmpeg** - Media transcoding and streaming (custom FFmpeg builds with hardware acceleration support)
+- **SQLite or MySQL/MariaDB** - Database backend
+- **Blazor** - Modern web-based UI
+- **HLS/MPEG-TS** - Industry-standard streaming protocols
+
+### Components
+
+**Main Server (`ErsatzTV`)**  
+Handles the web UI, API, channel management, scheduling, and streaming. Runs on ports 8409 (default) for both UI and streaming.
+
+**Scanner (`ErsatzTV.Scanner`)**  
+Background process that scans media libraries, updates metadata, and maintains the search index.
+
+**Transcoding Engine**  
+Real-time FFmpeg-based transcoding with support for multiple hardware acceleration platforms.
+
+## Use Cases
+
+### Create Theme Channels
+Build channels dedicated to specific genres, shows, or eras - like a 90s cartoon channel or a horror movie marathon.
+
+### Simulate Broadcast TV
+Schedule content with precise timing, filler content, pre-roll/mid-roll/post-roll sequences, and watermarks.
+
+### Personal Music Channels
+Create music video channels with your library, complete with schedule flexibility and visualization.
+
+### Multi-Device Streaming
+Stream to any IPTV client - smart TVs, Kodi, VLC, mobile apps, and more.
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your first channel running in minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation instructions for all platforms
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+- **Documentation**: [ersatztv.org/docs](https://ersatztv.org/docs/)
+- **Community**: [discuss.ersatztv.org](https://discuss.ersatztv.org)
+- **Feature Requests**: [features.ersatztv.org](https://features.ersatztv.org/)
+- **Contact**: [ersatztv.org/contact](https://ersatztv.org/contact)
+
+<Note>
+  ErsatzTV is inspired by [pseudotv-plex](https://github.com/DEFENDORe/pseudotv) and the [dizquetv](https://github.com/vexorian/dizquetv) fork.
+</Note>

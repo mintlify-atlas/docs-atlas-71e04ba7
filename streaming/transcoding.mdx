@@ -1,0 +1,519 @@
+---
+title: Transcoding
+description: Configure FFmpeg transcoding profiles for optimal streaming performance
+---
+
+ErsatzTV uses FFmpeg to transcode media on-the-fly, ensuring smooth playback across all devices. Transcoding profiles define video and audio encoding parameters, resolution, bitrate, and codec settings.
+
+## FFmpeg Profiles
+
+FFmpeg profiles control how media is transcoded during streaming. Each channel can be assigned a specific profile to optimize quality, compatibility, and performance.
+
+### Profile Components
+
+<CardGroup cols={2}>
+  <Card title="Video Settings" icon="video">
+    - Format (H.264, HEVC, AV1)
+    - Resolution and scaling
+    - Bitrate and buffer size
+    - Frame rate normalization
+  </Card>
+  
+  <Card title="Audio Settings" icon="volume-high">
+    - Format (AAC, AC3)
+    - Bitrate and channels
+    - Sample rate
+    - Loudness normalization
+  </Card>
+  
+  <Card title="Hardware Acceleration" icon="microchip">
+    - NVENC (NVIDIA)
+    - QSV (Intel Quick Sync)
+    - VAAPI (Linux)
+    - AMF (AMD)
+  </Card>
+  
+  <Card title="Advanced Options" icon="sliders">
+    - Deinterlacing
+    - Color normalization
+    - Tonemap for HDR
+    - Subtitle burning
+  </Card>
+</CardGroup>
+
+## Creating a Profile
+
+Profiles are created and managed through the ErsatzTV web interface.
+
+<Steps>
+  <Step title="Navigate to FFmpeg Profiles">
+    Go to **Settings > FFmpeg Profiles**
+  </Step>
+  
+  <Step title="Add New Profile">
+    Click **Add Profile** button
+  </Step>
+  
+  <Step title="Configure Basic Settings">
+    - **Name**: Descriptive profile name
+    - **Resolution**: Target resolution (1080p, 720p, etc.)
+    - **Thread Count**: FFmpeg encoding threads (0 = auto)
+  </Step>
+  
+  <Step title="Set Video Parameters">
+    Configure video encoding options (see below)
+  </Step>
+  
+  <Step title="Set Audio Parameters">
+    Configure audio encoding options (see below)
+  </Step>
+  
+  <Step title="Save Profile">
+    Click **Save** to create the profile
+  </Step>
+</Steps>
+
+## Video Configuration
+
+### Video Format
+
+<ParamField body="VideoFormat" type="enum" required>
+  Video codec for encoding:
+  - `H264` - H.264/AVC (best compatibility)
+  - `Hevc` - H.265/HEVC (better compression)
+  - `Mpeg2Video` - MPEG-2 (legacy compatibility)
+  - `Av1` - AV1 (best compression, limited support)
+  - `Copy` - Copy video stream (no transcoding)
+</ParamField>
+
+**Codec Characteristics:**
+
+| Codec | Compression | Compatibility | CPU Usage | Hardware Support |
+|-------|-------------|---------------|-----------|------------------|
+| H.264 | Good | Excellent | Medium | Excellent |
+| HEVC | Better | Good | High | Good |
+| AV1 | Best | Limited | Very High | Limited |
+| MPEG-2 | Poor | Excellent | Low | Good |
+
+### Video Profile & Preset
+
+<ParamField body="VideoProfile" type="string">
+  H.264/HEVC encoding profile:
+  - `baseline` - Maximum compatibility
+  - `main` - Balanced compatibility/quality
+  - `high` - Best quality (recommended)
+</ParamField>
+
+<ParamField body="VideoPreset" type="string">
+  Encoding speed preset:
+  - `ultrafast` - Fastest, lowest quality
+  - `superfast`, `veryfast`, `faster`, `fast`
+  - `medium` - Balanced (default)
+  - `slow`, `slower`, `veryslow` - Higher quality
+  - `placebo` - Highest quality, very slow
+</ParamField>
+
+<Note>
+Faster presets use less CPU but produce larger files with lower quality. Slower presets improve quality but require more processing power.
+</Note>
+
+### Bitrate & Buffer
+
+<ParamField body="VideoBitrate" type="integer" required>
+  Target video bitrate in Kbps
+  
+  **Recommended values:**
+  - 720p: 2000-4000 Kbps
+  - 1080p: 4000-8000 Kbps
+  - 4K: 15000-25000 Kbps
+</ParamField>
+
+<ParamField body="VideoBufferSize" type="integer" required>
+  Video buffer size in Kbps (typically 2x bitrate)
+  
+  Larger buffers provide more stable quality but increase latency.
+</ParamField>
+
+### Resolution & Scaling
+
+<ParamField body="ResolutionId" type="integer" required>
+  Target resolution ID:
+  - 1920x1080 (1080p)
+  - 1280x720 (720p)
+  - 3840x2160 (4K)
+  - Custom resolutions
+</ParamField>
+
+<ParamField body="ScalingBehavior" type="enum">
+  How to handle aspect ratio:
+  - `ScaleAndPad` - Add letterboxing/pillarboxing
+  - `Stretch` - Stretch to fill (distorts image)
+  - `Crop` - Crop to fill
+</ParamField>
+
+<ParamField body="PadMode" type="enum">
+  Padding filter implementation:
+  - `Software` - CPU-based padding
+  - `Hardware` - GPU-based padding (if available)
+</ParamField>
+
+### Advanced Video Options
+
+<ParamField body="BitDepth" type="enum">
+  Color bit depth:
+  - `8-bit` - Standard (most compatible)
+  - `10-bit` - HDR and high quality
+</ParamField>
+
+<ParamField body="AllowBFrames" type="boolean" default="false">
+  Enable B-frames for better compression
+  
+  May cause compatibility issues with some clients.
+</ParamField>
+
+<ParamField body="DeinterlaceVideo" type="boolean" default="true">
+  Automatically deinterlace interlaced content
+</ParamField>
+
+<ParamField body="NormalizeFramerate" type="boolean" default="false">
+  Normalize all content to a consistent frame rate
+</ParamField>
+
+<ParamField body="NormalizeVideo" type="boolean" default="true">
+  Normalize video parameters (resolution, format)
+</ParamField>
+
+<ParamField body="NormalizeColors" type="boolean" default="true">
+  Normalize color space to BT.709
+</ParamField>
+
+### HDR Tonemapping
+
+<ParamField body="TonemapAlgorithm" type="enum">
+  Algorithm for converting HDR to SDR:
+  - `None` - No tonemapping
+  - `Linear` - Simple linear mapping
+  - `Reinhard` - Reinhard operator
+  - `Hable` - Hable/Uncharted 2 operator
+  - `Mobius` - Mobius operator
+</ParamField>
+
+<Tip>
+Use **Hable** or **Mobius** for best HDR-to-SDR conversion quality.
+</Tip>
+
+## Audio Configuration
+
+### Audio Format
+
+<ParamField body="AudioFormat" type="enum" required>
+  Audio codec for encoding:
+  - `Aac` - AAC (best compatibility)
+  - `Ac3` - Dolby Digital (5.1 support)
+  - `AacLatm` - AAC LATM (HLS)
+  - `Copy` - Copy audio stream (no transcoding)
+</ParamField>
+
+### Audio Parameters
+
+<ParamField body="AudioBitrate" type="integer" required>
+  Target audio bitrate in Kbps
+  
+  **Recommended values:**
+  - Stereo AAC: 128-192 Kbps
+  - 5.1 AC3: 384-448 Kbps
+</ParamField>
+
+<ParamField body="AudioBufferSize" type="integer" required>
+  Audio buffer size in Kbps (typically 2x bitrate)
+</ParamField>
+
+<ParamField body="AudioChannels" type="integer" required>
+  Number of audio channels:
+  - `1` - Mono
+  - `2` - Stereo
+  - `6` - 5.1 surround
+</ParamField>
+
+<ParamField body="AudioSampleRate" type="integer" required>
+  Audio sample rate in kHz:
+  - `44` - 44.1 kHz (CD quality)
+  - `48` - 48 kHz (recommended)
+</ParamField>
+
+### Loudness Normalization
+
+<ParamField body="NormalizeLoudnessMode" type="enum">
+  Loudness normalization mode:
+  - `Off` - No normalization
+  - `LoudNorm` - FFmpeg loudnorm filter
+  - `DynAudNorm` - Dynamic audio normalizer
+</ParamField>
+
+<ParamField body="TargetLoudness" type="number">
+  Target loudness in LUFS (Loudness Units Full Scale)
+  
+  Default: -24 LUFS (broadcast standard)
+  
+  Range: -70.0 to -5.0
+</ParamField>
+
+<ParamField body="NormalizeAudio" type="boolean" default="true">
+  Enable audio normalization
+</ParamField>
+
+<Warning>
+Loudness normalization adds processing overhead. Disable if CPU usage is a concern.
+</Warning>
+
+## Hardware Acceleration
+
+<ParamField body="HardwareAcceleration" type="enum" required>
+  Hardware acceleration type:
+  - `None` - Software encoding only
+  - `Nvenc` - NVIDIA GPU
+  - `Qsv` - Intel Quick Sync Video
+  - `Vaapi` - Video Acceleration API (Linux)
+  - `Amf` - AMD Advanced Media Framework
+  - `VideoToolbox` - Apple VideoToolbox (macOS)
+  - `V4l2m2m` - Video4Linux (Raspberry Pi)
+  - `Rkmpp` - Rockchip MPP
+</ParamField>
+
+For detailed hardware acceleration setup, see [Hardware Acceleration](./hardware-acceleration).
+
+### VAAPI Configuration
+
+<ParamField body="VaapiDriver" type="enum">
+  VAAPI driver (Linux only):
+  - `i965` - Intel (Gen 7-Gen 9.5)
+  - `iHD` - Intel (Gen 8+, recommended)
+  - `radeonsi` - AMD
+</ParamField>
+
+<ParamField body="VaapiDevice" type="string">
+  VAAPI device path (default: `/dev/dri/renderD128`)
+</ParamField>
+
+<ParamField body="VaapiDisplay" type="string">
+  VAAPI display (default: `:0`)
+</ParamField>
+
+### QSV Configuration
+
+<ParamField body="QsvExtraHardwareFrames" type="integer" default="64">
+  Extra hardware frame pool size for QSV
+  
+  Increase if experiencing frame allocation errors.
+</ParamField>
+
+## Thread Count
+
+<ParamField body="ThreadCount" type="integer" default="0">
+  Number of FFmpeg encoding threads
+  
+  - `0` - Auto-detect (recommended)
+  - `1-32` - Manual thread count
+</ParamField>
+
+<Info>
+With hardware acceleration enabled, thread count is automatically set to 1 for decoding to avoid conflicts.
+</Info>
+
+## Streaming Modes
+
+Transcoding behavior varies by streaming mode:
+
+### Transport Stream (TS)
+
+```bash
+ffmpeg -i input.mkv \
+  -c:v libx264 -preset fast -b:v 4000k \
+  -c:a aac -b:a 192k \
+  -f mpegts pipe:1
+```
+
+- Continuous stream with concat protocol
+- Best for HDHR compatibility
+- No segmentation overhead
+
+### HLS Direct
+
+```bash
+ffmpeg -i input.mkv \
+  -c:v libx264 -preset fast -b:v 4000k \
+  -c:a aac -b:a 192k \
+  -f hls -hls_time 6 -hls_list_size 3 \
+  playlist.m3u8
+```
+
+- Real-time HLS generation
+- Minimal latency
+- Best for copy mode
+
+### HLS Segmenter
+
+```bash
+# Parent process (segmenter)
+ffmpeg -i pipe:0 \
+  -f hls -hls_time 6 -hls_list_size 10 \
+  -hls_segment_filename segment%d.ts \
+  playlist.m3u8
+
+# Child process (transcoder)
+ffmpeg -i input.mkv \
+  -c:v libx264 -preset fast -b:v 4000k \
+  -c:a aac -b:a 192k \
+  -f mpegts pipe:1
+```
+
+- Separate transcoding and segmentation
+- Better quality control
+- Recommended for most use cases
+
+## Profile Examples
+
+### High Quality 1080p
+
+```yaml
+Name: "High Quality 1080p"
+Resolution: 1920x1080
+VideoFormat: H264
+VideoProfile: high
+VideoPreset: slow
+VideoBitrate: 6000 Kbps
+VideoBufferSize: 12000 Kbps
+AudioFormat: Aac
+AudioBitrate: 192 Kbps
+AudioChannels: 2
+AudioSampleRate: 48 kHz
+HardwareAcceleration: None
+```
+
+### Fast 720p (Hardware)
+
+```yaml
+Name: "Fast 720p NVENC"
+Resolution: 1280x720
+VideoFormat: H264
+VideoProfile: main
+VideoPreset: fast
+VideoBitrate: 3000 Kbps
+VideoBufferSize: 6000 Kbps
+AudioFormat: Aac
+AudioBitrate: 128 Kbps
+AudioChannels: 2
+AudioSampleRate: 48 kHz
+HardwareAcceleration: Nvenc
+```
+
+### Low Bandwidth
+
+```yaml
+Name: "Low Bandwidth 480p"
+Resolution: 854x480
+VideoFormat: H264
+VideoProfile: baseline
+VideoPreset: veryfast
+VideoBitrate: 1200 Kbps
+VideoBufferSize: 2400 Kbps
+AudioFormat: Aac
+AudioBitrate: 96 Kbps
+AudioChannels: 2
+AudioSampleRate: 48 kHz
+HardwareAcceleration: None
+```
+
+### Copy (No Transcode)
+
+```yaml
+Name: "Copy - No Transcode"
+VideoFormat: Copy
+AudioFormat: Copy
+HardwareAcceleration: None
+```
+
+<Warning>
+Copy mode bypasses transcoding entirely. Ensure source media is compatible with all clients.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="High CPU usage during transcoding">
+    **Reduce CPU load:**
+    - Enable hardware acceleration
+    - Use faster video presets
+    - Lower resolution or bitrate
+    - Reduce thread count
+    - Disable loudness normalization
+  </Accordion>
+  
+  <Accordion title="Poor video quality">
+    **Improve quality:**
+    - Increase video bitrate
+    - Use slower video presets
+    - Increase buffer size
+    - Use higher profile (main/high)
+    - Disable frame rate normalization if source is VFR
+  </Accordion>
+  
+  <Accordion title="Audio sync issues">
+    **Fix audio sync:**
+    - Check source media quality
+    - Disable audio normalization temporarily
+    - Verify sample rate matches source
+    - Try different audio codec
+    - Check FFmpeg logs for warnings
+  </Accordion>
+  
+  <Accordion title="Transcoding failures">
+    **Common causes:**
+    - Invalid FFmpeg parameters
+    - Incompatible hardware acceleration
+    - Insufficient system resources
+    - Corrupted source media
+    
+    **Check:**
+    - FFmpeg logs in ErsatzTV
+    - System resource usage
+    - Hardware acceleration health check
+    - Test with software encoding
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Start with Software Encoding">
+    Test profiles with software encoding before enabling hardware acceleration
+  </Step>
+  
+  <Step title="Match Source Quality">
+    Don't exceed source bitrate - it wastes bandwidth without quality improvement
+  </Step>
+  
+  <Step title="Test Multiple Clients">
+    Verify compatibility across all your devices and players
+  </Step>
+  
+  <Step title="Monitor Performance">
+    Watch CPU/GPU usage and adjust settings accordingly
+  </Step>
+  
+  <Step title="Use Appropriate Presets">
+    Balance quality and performance based on your hardware capabilities
+  </Step>
+</Steps>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Hardware Acceleration" icon="microchip" href="./hardware-acceleration">
+    Configure GPU acceleration for transcoding
+  </Card>
+  
+  <Card title="IPTV Streaming" icon="signal-stream" href="./iptv">
+    Apply profiles to IPTV channels
+  </Card>
+</CardGroup>

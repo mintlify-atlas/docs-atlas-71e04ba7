@@ -1,0 +1,602 @@
+---
+title: Installation
+description: Complete installation guide for Docker, standalone, and from-source deployments
+---
+
+## Overview
+
+ErsatzTV can be installed in several ways depending on your platform and requirements:
+
+- **Docker** (Recommended) - Easiest setup with all dependencies included
+- **Standalone Binaries** - Direct installation on Windows, Linux, or macOS
+- **From Source** - Build from source code for development or customization
+
+## System Requirements
+
+### Minimum Requirements
+
+- **OS**: Linux, Windows, or macOS
+- **RAM**: 2 GB minimum, 4 GB recommended
+- **Disk Space**: 
+  - 128 MB minimum for configuration
+  - 2-10 GB recommended for transcoding cache
+- **CPU**: x64 or ARM64 architecture
+- **FFmpeg**: Required (included in Docker images)
+
+### Recommended for Hardware Acceleration
+
+- **NVIDIA GPU**: For NVENC hardware transcoding
+- **Intel GPU**: For QSV (Quick Sync Video) hardware transcoding
+- **AMD GPU**: For VAAPI/AMF hardware transcoding
+- **Apple Silicon**: For VideoToolbox hardware transcoding
+- **Rockchip SoC**: For Rkmpp hardware transcoding
+
+---
+
+## Docker Installation
+
+Docker is the recommended installation method as it includes all dependencies and simplifies updates.
+
+### Standard Installation
+
+<Steps>
+  <Step title="Create docker-compose.yml">
+    Create a `docker-compose.yml` file:
+
+    <CodeGroup>
+    ```yaml Basic Setup
+    services:
+      ersatztv:
+        image: ersatztv/ersatztv:latest
+        container_name: ersatztv
+        environment:
+          - TZ=America/Chicago
+        ports:
+          - "8409:8409"
+        volumes:
+          - ./config:/config
+          - /path/to/media:/media:ro
+        tmpfs:
+          - /transcode
+        restart: unless-stopped
+    ```
+
+    ```yaml With Named Volume
+    services:
+      ersatztv:
+        image: ersatztv/ersatztv:latest
+        container_name: ersatztv
+        environment:
+          - TZ=America/Chicago
+        ports:
+          - "8409:8409"
+        volumes:
+          - ersatztv_config:/config
+          - /path/to/media:/media:ro
+        tmpfs:
+          - /transcode
+        restart: unless-stopped
+
+    volumes:
+      ersatztv_config:
+    ```
+    </CodeGroup>
+
+    <Note>
+      The `tmpfs` mount for `/transcode` provides fast temporary storage for transcoding. This is highly recommended for performance.
+    </Note>
+  </Step>
+
+  <Step title="Start the container">
+    ```bash
+    docker-compose up -d
+    ```
+
+    Verify it's running:
+    ```bash
+    docker-compose ps
+    docker-compose logs -f ersatztv
+    ```
+  </Step>
+
+  <Step title="Access the web interface">
+    Open your browser to:
+    ```
+    http://localhost:8409
+    ```
+  </Step>
+</Steps>
+
+### Hardware Acceleration Setup
+
+#### NVIDIA GPU (NVENC)
+
+For NVIDIA GPU hardware transcoding:
+
+```yaml docker-compose.nvidia.yml
+services:
+  ersatztv:
+    image: ersatztv/ersatztv:latest
+    container_name: ersatztv
+    privileged: true
+    environment:
+      - TZ=America/Chicago
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+    ports:
+      - "8409:8409"
+    volumes:
+      - ./config:/config
+      - /path/to/media:/media:ro
+    tmpfs:
+      - /transcode
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+```
+
+<Warning>
+  Requires NVIDIA Container Toolkit to be installed on the host system.
+</Warning>
+
+#### Intel GPU (QSV) / AMD GPU (VAAPI)
+
+For Intel Quick Sync or AMD VAAPI:
+
+```yaml docker-compose.vaapi.yml
+services:
+  ersatztv:
+    image: ersatztv/ersatztv:latest
+    container_name: ersatztv
+    environment:
+      - TZ=America/Chicago
+    ports:
+      - "8409:8409"
+    volumes:
+      - ./config:/config
+      - /path/to/media:/media:ro
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    tmpfs:
+      - /transcode
+    restart: unless-stopped
+```
+
+<Tip>
+  If `/dev/dri/renderD128` doesn't exist, check `ls /dev/dri/` for the correct device node.
+</Tip>
+
+---
+
+## Standalone Installation
+
+### Windows
+
+<Steps>
+  <Step title="Download the latest release">
+    Download `ErsatzTV-Windows.zip` from the [releases page](https://github.com/ErsatzTV/ErsatzTV/releases)
+  </Step>
+
+  <Step title="Extract the archive">
+    Extract to a location like `C:\Program Files\ErsatzTV`
+  </Step>
+
+  <Step title="Install FFmpeg">
+    Download FFmpeg with hardware acceleration support from the [ErsatzTV FFmpeg releases](https://github.com/ErsatzTV/ffmpeg-builds/releases) or use the official FFmpeg builds.
+
+    Place `ffmpeg.exe` in the ErsatzTV folder or add it to your system PATH.
+  </Step>
+
+  <Step title="Run ErsatzTV">
+    Double-click `ErsatzTV-Windows.exe` to start the application.
+
+    The web UI will open automatically at `http://localhost:8409`
+  </Step>
+</Steps>
+
+<Note>
+  Windows builds are code-signed to avoid false positives from antivirus software.
+</Note>
+
+### Linux
+
+<Steps>
+  <Step title="Download the latest release">
+    Download `ErsatzTV-linux-x64.tar.gz` or `ErsatzTV-linux-arm64.tar.gz` from the releases page
+  </Step>
+
+  <Step title="Extract the archive">
+    ```bash
+    tar -xzf ErsatzTV-linux-x64.tar.gz
+    cd ErsatzTV
+    ```
+  </Step>
+
+  <Step title="Install FFmpeg">
+    Install FFmpeg with your package manager:
+
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    sudo apt-get update
+    sudo apt-get install ffmpeg
+    ```
+
+    ```bash Fedora
+    sudo dnf install ffmpeg
+    ```
+
+    ```bash Arch
+    sudo pacman -S ffmpeg
+    ```
+    </CodeGroup>
+
+    <Warning>
+      For hardware acceleration, ensure FFmpeg is compiled with the appropriate flags (NVENC, VAAPI, QSV, etc.)
+    </Warning>
+  </Step>
+
+  <Step title="Make executable and run">
+    ```bash
+    chmod +x ErsatzTV
+    ./ErsatzTV
+    ```
+
+    Access the web UI at `http://localhost:8409`
+  </Step>
+
+  <Step title="Create a systemd service (optional)">
+    Create `/etc/systemd/system/ersatztv.service`:
+
+    ```ini
+    [Unit]
+    Description=ErsatzTV
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=ersatztv
+    WorkingDirectory=/opt/ersatztv
+    ExecStart=/opt/ersatztv/ErsatzTV
+    Restart=always
+    Environment="ETV_CONFIG_FOLDER=/var/lib/ersatztv/config"
+    Environment="ETV_TRANSCODE_FOLDER=/tmp/ersatztv/transcode"
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    Enable and start:
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable ersatztv
+    sudo systemctl start ersatztv
+    ```
+  </Step>
+</Steps>
+
+### macOS
+
+<Steps>
+  <Step title="Download the latest release">
+    Download `ErsatzTV-macos-x64.tar.gz` or `ErsatzTV-macos-arm64.tar.gz` from the releases page
+  </Step>
+
+  <Step title="Extract and run">
+    ```bash
+    tar -xzf ErsatzTV-macos-arm64.tar.gz
+    cd ErsatzTV
+    chmod +x ErsatzTV
+    ./ErsatzTV
+    ```
+  </Step>
+
+  <Step title="Install FFmpeg">
+    Install FFmpeg using Homebrew:
+
+    ```bash
+    brew install ffmpeg
+    ```
+
+    <Warning>
+      The default Homebrew FFmpeg is **not compatible** with ErsatzTV. You must use:
+      ```bash
+      brew install ffmpeg@7
+      # or
+      brew install ffmpeg-full
+      ```
+    </Warning>
+  </Step>
+</Steps>
+
+---
+
+## Build from Source
+
+<Steps>
+  <Step title="Prerequisites">
+    Install required tools:
+    - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+    - Git
+    - FFmpeg (runtime dependency)
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ErsatzTV/ErsatzTV.git
+    cd ErsatzTV
+    ```
+  </Step>
+
+  <Step title="Build the project">
+    ```bash
+    dotnet restore ErsatzTV.sln
+    dotnet build ErsatzTV.sln -c Release
+    ```
+  </Step>
+
+  <Step title="Run ErsatzTV">
+    ```bash
+    cd ErsatzTV/bin/Release/net10.0
+    ./ErsatzTV
+    ```
+  </Step>
+
+  <Step title="Create a standalone package (optional)">
+    ```bash
+    dotnet publish ErsatzTV/ErsatzTV.csproj -c Release -r linux-x64 --self-contained false -o ./publish
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Configuration
+
+### Environment Variables
+
+ErsatzTV can be configured using environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `TZ` | Timezone (Docker) | System timezone |
+| `ETV_CONFIG_FOLDER` | Configuration directory path | `~/.local/share/ersatztv` |
+| `ETV_TRANSCODE_FOLDER` | Transcoding cache directory | System temp directory |
+| `ETV_UI_PORT` | Web UI port | `8409` |
+| `ETV_STREAMING_PORT` | Streaming port (can differ from UI) | `8409` |
+| `ETV_BASE_URL` | Base URL for reverse proxy setups | None |
+| `ETV_INSTANCE_ID` | Unique identifier for multi-instance EPG | None |
+| `ETV_DISABLE_VULKAN` | Disable Vulkan support | `1` (Docker) |
+| `ETV_ALLOW_SHARED_PLEX_SERVERS` | Allow Plex shared servers | `false` |
+| `ETV_MAXIMUM_UPLOAD_MB` | Max upload size in MB | `10` |
+| `ETV_SLOW_DB_MS` | Log slow database queries (DEBUG level) | Disabled |
+| `ETV_SLOW_API_MS` | Log slow API calls (DEBUG level) | Disabled |
+| `ETV_JF_PAGE_SIZE` | Jellyfin API page size | `10` |
+| `ETV_JF_ENABLE_STATS` | Enable Jellyfin timing stats | `false` |
+
+<Note>
+  Set environment variables in your `docker-compose.yml` (Docker) or systemd service file (Linux) or system environment (Windows/macOS).
+</Note>
+
+### Ports
+
+- **8409** - Default web UI and streaming port
+  - Web interface: `http://localhost:8409`
+  - IPTV playlist: `http://localhost:8409/iptv/playlist.m3u8`
+  - XMLTV EPG: `http://localhost:8409/iptv/xmltv.xml`
+  - Channel streams: `http://localhost:8409/iptv/channel/{number}.m3u8`
+
+<Tip>
+  You can separate the UI and streaming ports by setting `ETV_UI_PORT` and `ETV_STREAMING_PORT` to different values.
+</Tip>
+
+### Volumes and Storage
+
+#### Configuration Directory (`/config`)
+
+Stores:
+- Database file (SQLite) or connection settings (MySQL/MariaDB)
+- FFmpeg profiles
+- Graphics elements and templates
+- XMLTV templates
+- Watermark images
+- Logs
+
+<Warning>
+  **Important**: Back up this directory regularly. It contains all your channels, schedules, and settings.
+</Warning>
+
+#### Transcode Directory (`/transcode`)
+
+Stores temporary transcoding files:
+- HLS segments
+- Active transcode sessions
+- Temporary media processing
+
+<Tip>
+  Use `tmpfs` (RAM disk) for the transcode directory for best performance. This prevents unnecessary disk I/O.
+</Tip>
+
+#### Media Directories
+
+Mount your media as read-only (`:ro`) when possible:
+
+```yaml
+volumes:
+  - /mnt/movies:/movies:ro
+  - /mnt/tv:/tv:ro
+  - /mnt/music:/music:ro
+```
+
+---
+
+## Database Configuration
+
+### SQLite (Default)
+
+ErsatzTV uses SQLite by default. No configuration needed.
+
+**Database location**: `{config_folder}/ersatztv.sqlite`
+
+<Note>
+  SQLite works well for most installations and is the recommended option.
+</Note>
+
+### MySQL / MariaDB
+
+For larger deployments or advanced use cases, you can use MySQL/MariaDB.
+
+<Steps>
+  <Step title="Create database and user">
+    ```sql
+    CREATE DATABASE ersatztv CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE USER 'ersatztv'@'%' IDENTIFIED BY 'your_password';
+    GRANT ALL PRIVILEGES ON ersatztv.* TO 'ersatztv'@'%';
+    SET GLOBAL local_infile=ON;
+    FLUSH PRIVILEGES;
+    ```
+
+    <Warning>
+      `local_infile=ON` is **required** for bulk inserts during playout builds. ErsatzTV will attempt to set this automatically but may fail without proper permissions.
+    </Warning>
+  </Step>
+
+  <Step title="Configure connection string">
+    Create or edit `{config_folder}/connectionstrings.json`:
+
+    ```json
+    {
+      "DatabaseType": "MySql",
+      "ConnectionStrings": {
+        "MySql": "Server=localhost;Database=ersatztv;User=ersatztv;Password=your_password;AllowLoadLocalInfile=true"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Restart ErsatzTV">
+    ```bash
+    docker-compose restart ersatztv
+    ```
+
+    ErsatzTV will automatically migrate the database schema on first startup.
+  </Step>
+</Steps>
+
+---
+
+## Updates
+
+### Docker
+
+Update to the latest version:
+
+```bash
+docker-compose pull
+docker-compose up -d
+```
+
+<Tip>
+  Your configuration and database are stored in volumes and will persist across updates.
+</Tip>
+
+### Standalone
+
+1. Download the latest release
+2. Stop ErsatzTV
+3. Replace binaries with new version
+4. Start ErsatzTV (database migrations run automatically)
+
+<Warning>
+  Always back up your configuration directory before updating.
+</Warning>
+
+---
+
+## Verification
+
+After installation, verify everything is working:
+
+<Steps>
+  <Step title="Check web UI access">
+    Navigate to `http://localhost:8409` - you should see the ErsatzTV interface
+  </Step>
+
+  <Step title="Check FFmpeg">
+    Go to **Settings** → **FFmpeg** and verify FFmpeg is detected
+  </Step>
+
+  <Step title="Check hardware acceleration">
+    Go to **Troubleshooting** → **Capabilities** to see available hardware encoders/decoders
+  </Step>
+
+  <Step title="Review logs">
+    Check logs for any errors:
+    - Docker: `docker-compose logs -f ersatztv`
+    - Standalone: Check `{config_folder}/logs/`
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Create your first channel
+  </Card>
+  
+  <Card title="Media Sources" icon="folder-open">
+    Configure Plex, Jellyfin, Emby, or local libraries
+  </Card>
+  
+  <Card title="Scheduling" icon="calendar">
+    Learn about different scheduling modes
+  </Card>
+  
+  <Card title="Hardware Acceleration" icon="microchip">
+    Configure GPU transcoding for better performance
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ErsatzTV won't start">
+    - Check logs for specific error messages
+    - Verify minimum 128 MB free disk space
+    - Ensure no other application is using port 8409
+    - On Linux, check file permissions on config/transcode directories
+  </Accordion>
+
+  <Accordion title="FFmpeg not detected">
+    - Docker: FFmpeg is included, check container logs
+    - Standalone: Verify FFmpeg is in PATH or same directory as ErsatzTV
+    - macOS: Use `ffmpeg@7` or `ffmpeg-full`, not default Homebrew FFmpeg
+    - Run `ffmpeg -version` to verify installation
+  </Accordion>
+
+  <Accordion title="Database initialization failed">
+    - Check available disk space (minimum 128 MB)
+    - Verify write permissions on config directory
+    - For MySQL: Verify connection string and ensure `local_infile=ON`
+    - Check logs for specific database errors
+  </Accordion>
+
+  <Accordion title="Hardware acceleration not working">
+    - Go to **Troubleshooting** → **Capabilities** to see detected hardware
+    - Docker: Verify GPU passthrough is configured correctly
+    - NVIDIA: Ensure NVIDIA Container Toolkit is installed
+    - Intel/AMD: Verify `/dev/dri` device is accessible
+    - Check FFmpeg compile flags support your hardware
+  </Accordion>
+
+  <Accordion title="Permission errors in Docker">
+    - Check volume mount paths are correct
+    - Verify host directories are readable by container
+    - For media, use `:ro` (read-only) mounts
+    - Config directory needs read/write access
+  </Accordion>
+</AccordionGroup>

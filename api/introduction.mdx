@@ -1,0 +1,93 @@
+---
+title: 'API Introduction'
+description: 'Overview of the ErsatzTV REST API'
+---
+
+## Welcome to the ErsatzTV API
+
+The ErsatzTV REST API provides programmatic access to manage channels, schedules, libraries, media collections, and streaming configurations. This API enables automation and integration with external tools.
+
+## Base URL
+
+The API is accessible at the same host and port as your ErsatzTV web interface:
+
+```
+http://localhost:8409/api
+```
+
+For Docker deployments or custom configurations, replace `localhost:8409` with your actual host and port.
+
+## API Versioning
+
+The current API version is **v3**. You can check the API and application version:
+
+```bash
+GET /api/version
+```
+
+**Response:**
+```json
+{
+  "apiVersion": 3,
+  "appVersion": "0.8.9-beta"
+}
+```
+
+## Response Format
+
+All API responses are returned in JSON format with `Content-Type: application/json`.
+
+### Success Responses
+
+- **200 OK**: Request succeeded, response body contains data
+- **201 Created**: Resource created successfully
+- **204 No Content**: Request succeeded with no response body
+
+### Error Responses
+
+- **400 Bad Request**: Invalid request parameters or body
+- **401 Unauthorized**: Authentication required
+- **404 Not Found**: Resource does not exist
+- **409 Conflict**: Resource conflict (e.g., cannot delete in-use profile)
+- **500 Internal Server Error**: Server error occurred
+
+Error responses include a descriptive message:
+
+```json
+{
+  "error": "ShowTitle is required"
+}
+```
+
+## Rate Limiting
+
+There are currently no rate limits on API requests. However, resource-intensive operations like library scans should be used judiciously.
+
+## OpenAPI Specification
+
+ErsatzTV provides OpenAPI 3.1 specifications:
+
+- **General API**: `/openapi/v1.json`
+- **Scripted Schedules**: `/openapi/scripted-schedule.json`
+
+## Getting Started
+
+To begin using the API:
+
+1. Review the [Authentication](/api/authentication) guide to configure access
+2. Explore endpoint documentation for your use case
+3. Test endpoints using tools like `curl`, Postman, or your preferred HTTP client
+
+## Client Libraries
+
+While no official SDKs are currently available, you can generate client libraries from the OpenAPI specifications using tools like:
+
+- [OpenAPI Generator](https://openapi-generator.tech/)
+- [Swagger Codegen](https://swagger.io/tools/swagger-codegen/)
+
+## Support
+
+For API questions and issues:
+
+- [GitHub Issues](https://github.com/ErsatzTV/ErsatzTV/issues)
+- [Discord Community](https://discord.gg/hHaJm3yGy6)

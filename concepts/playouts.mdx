@@ -1,0 +1,263 @@
+---
+title: 'Playouts'
+description: 'Understanding playouts and playout items in ErsatzTV'
+---
+
+## What is a playout?
+
+A playout is the bridge between a channel and its schedule. It generates the actual sequence of media items (playout items) that will stream on a channel, transforming abstract schedule definitions into concrete playback instructions.
+
+## Playout structure
+
+Each channel has one or more playouts. The playout:
+
+- References a schedule (or schedule file)
+- Generates playout items based on the schedule
+- Tracks playback history and state
+- Manages anchor points for schedule synchronization
+- Handles daily rebuilds and updates
+
+## Schedule kinds
+
+The `ScheduleKind` property indicates which type of schedule is being used:
+
+<CardGroup cols={2}>
+  <Card title="Classic" icon="calendar">
+    Traditional schedule with flexible item configuration
+  </Card>
+  <Card title="Block" icon="grid-2">
+    Time-block based scheduling
+  </Card>
+  <Card title="Sequential" icon="list-ol">
+    Simple sequential playout
+  </Card>
+  <Card title="Scripted" icon="file-code">
+    External script-based schedule
+  </Card>
+  <Card title="External JSON" icon="file-json">
+    External JSON-based schedule
+  </Card>
+  <Card title="None" icon="circle-xmark">
+    No schedule (manual configuration)
+  </Card>
+</CardGroup>
+
+## Playout items
+
+Playout items are the individual pieces of content scheduled to play on a channel. Each playout item represents a specific media file playing at a specific time.
+
+### Core properties
+
+- **MediaItemId** - Reference to the media file
+- **Start** - When the item starts playing (UTC)
+- **Finish** - When the item finishes playing (UTC)
+- **PlayoutId** - Reference to the parent playout
+
+### Guide properties
+
+Playout items include separate guide times for EPG display:
+
+- **GuideStart** - Start time to show in the EPG
+- **GuideFinish** - Finish time to show in the EPG
+- **CustomTitle** - Custom title for the EPG entry
+- **GuideGroup** - Grouping identifier for related items
+
+Guide times may differ from actual play times when items are grouped or have custom EPG behavior.
+
+<Info>
+Guide grouping allows multiple playout items to appear as a single entry in the EPG, useful for multi-part episodes or commercial breaks.
+</Info>
+
+### Playback control
+
+- **InPoint** - Where to start playback within the media file
+- **OutPoint** - Where to stop playback within the media file
+- **ChapterTitle** - For chapter-based playback
+
+These properties enable partial file playback, chapter selection, and content trimming.
+
+### Filler classification
+
+- **FillerKind** - Indicates the type of filler content (pre-roll, mid-roll, post-roll, tail, etc.)
+
+This helps distinguish between primary content and supplementary filler.
+
+### Audio and subtitle overrides
+
+- **PreferredAudioLanguageCode** - Audio language for this item
+- **PreferredAudioTitle** - Audio track title for this item
+- **PreferredSubtitleLanguageCode** - Subtitle language for this item
+- **SubtitleMode** - Subtitle rendering mode for this item
+
+These override channel-level preferences for this specific item.
+
+### Watermarks and graphics
+
+- **Watermarks** - Legacy watermark references
+- **PlayoutItemWatermarks** - Watermarks to apply to this item
+- **DisableWatermarks** - Flag to disable all watermarks for this item
+- **GraphicsElements** - Legacy graphics references
+- **PlayoutItemGraphicsElements** - Graphics elements to apply to this item
+
+Watermarks and graphics can be customized per playout item.
+
+### Scheduling metadata
+
+- **BlockKey** - Identifier for block schedules
+- **CollectionKey** - Source collection identifier
+- **CollectionEtag** - Collection version for cache invalidation
+- **SchedulingContext** - Debugging information about how the item was scheduled
+
+## Playout anchors
+
+Anchors are synchronization points that help align playouts to specific times:
+
+- **Anchor** - The primary anchor point for the playout
+- **ProgramScheduleAnchors** - Additional anchors for schedule items
+
+Anchors ensure that fixed-time schedule items play at the correct time, even after schedule rebuilds.
+
+## Playout gaps
+
+Gaps represent periods where no content is scheduled:
+
+- **Gaps** - List of time ranges with no playout items
+
+Gaps may be filled with fallback content or left as offline time depending on channel configuration.
+
+## Fill group indices
+
+For block schedules, fill group indices track:
+
+- **FillGroupIndices** - State tracking for fill groups within blocks
+
+This maintains continuity when the same content source is used across multiple time blocks.
+
+## Templates
+
+Templates define repeating patterns for deco (commercial breaks) and other recurring elements:
+
+- **Templates** - List of template configurations associated with this playout
+
+Templates are evaluated during playout building to insert content at the appropriate times.
+
+## Playout history
+
+The playout maintains a history of what has played:
+
+- **PlayoutHistory** - Records of previously played items
+
+History is used by smart shuffle algorithms and rerun detection to avoid repetition.
+
+## Seed and randomization
+
+For schedules with shuffle or random elements:
+
+- **Seed** - Random seed for reproducible shuffle behavior
+
+Changing the seed regenerates the randomization while keeping the same schedule configuration.
+
+## Daily rebuilds
+
+- **DailyRebuildTime** - Time of day when the playout should rebuild
+
+Daily rebuilds refresh the playout items, apply schedule changes, and advance the schedule for the next day.
+
+<Warning>
+Rebuild times should be set during periods of low viewership to minimize disruption.
+</Warning>
+
+## Deco integration
+
+Deco (commercial break system) integration:
+
+- **DecoId** - Reference to a deco configuration
+- **Deco** - The deco configuration object
+
+Deco automatically inserts commercial breaks and other interstitial content based on templates.
+
+See [Graphics Engine](/advanced/graphics-engine) for more information on deco.
+
+## On-demand checkpoints
+
+For on-demand channels:
+
+- **OnDemandCheckpoint** - Last position in the playout for on-demand playback
+
+This allows on-demand channels to resume where they left off.
+
+## Build status
+
+The playout tracks its build status:
+
+- **BuildStatus** - Status information from the last playout build
+  - **LastBuild** - Timestamp of the last build
+  - **Success** - Whether the build succeeded
+  - **Message** - Error message if the build failed
+
+Build status helps diagnose scheduling problems and configuration errors.
+
+## Playout building process
+
+When a playout is built:
+
+1. The schedule is evaluated to determine what content should play
+2. Collections are enumerated based on their playback order
+3. Filler content is inserted (pre-roll, mid-roll, post-roll, tail)
+4. Deco templates are applied to insert commercial breaks
+5. Watermarks and graphics elements are applied
+6. Playout items are generated with specific start and end times
+7. EPG guide times are calculated
+8. The playout items are saved to the database
+
+<Steps>
+  <Step title="Schedule evaluation">
+    The schedule type determines how schedule items are processed and ordered.
+  </Step>
+  <Step title="Collection enumeration">
+    Content is selected from collections based on playback order and shuffle settings.
+  </Step>
+  <Step title="Filler insertion">
+    Pre-roll, mid-roll, post-roll, and tail filler are inserted around content.
+  </Step>
+  <Step title="Timing calculation">
+    Start and end times are calculated based on media duration and schedule constraints.
+  </Step>
+  <Step title="Metadata application">
+    Watermarks, graphics, audio preferences, and subtitles are applied.
+  </Step>
+  <Step title="Playout item generation">
+    Final playout items are created and saved to the database.
+  </Step>
+</Steps>
+
+## Relationship to channels and schedules
+
+The complete relationship structure is:
+
+```
+Channel (1) ←→ (Many) Playout (1) ←→ (1) Schedule
+                         ↓
+                   (Many) PlayoutItem (1) ←→ (1) MediaItem
+```
+
+Each channel can have multiple playouts (though typically only one is active), each playout references one schedule, and each playout generates many playout items that reference actual media files.
+
+## Alternate schedules
+
+Playouts can reference alternate schedules:
+
+- **ProgramScheduleAlternates** - Alternative schedules for special conditions
+
+Alternates allow the same playout to switch between different schedules based on date, day of week, or other criteria.
+
+## Working with playouts
+
+Playouts are typically managed through the ErsatzTV web interface, but can also be:
+
+- Created and updated via the API
+- Manually rebuilt to apply schedule changes
+- Monitored for build errors and warnings
+- Inspected to debug scheduling issues
+
+The playout items table in the database provides a complete record of what is scheduled to play and when.

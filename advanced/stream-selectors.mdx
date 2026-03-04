@@ -1,0 +1,589 @@
+---
+title: Stream Selectors
+description: Advanced audio and subtitle stream selection with custom logic and scripting
+icon: sliders
+---
+
+Stream selectors provide fine-grained control over which audio and subtitle streams play for each piece of content. Custom stream selectors use YAML configuration with powerful filtering and conditional logic.
+
+## Stream Selector Modes
+
+Channels support three stream selector modes:
+
+```csharp
+public enum ChannelStreamSelectorMode
+{
+    Default = 0,
+    Custom = 1,
+    Troubleshooting = 100
+}
+```
+
+Reference: `ChannelStreamSelectorMode.cs:3-9`
+
+### Default Mode
+
+Automatic stream selection based on simple rules:
+
+```yaml
+stream_selector_mode: Default
+```
+
+- Selects first audio stream (or matches language if configured)
+- Selects subtitles based on [subtitle mode](/advanced/subtitles)
+- Suitable for most use cases
+
+Reference: `FFmpegLibraryProcessService.cs:147`
+
+### Custom Mode
+
+Advanced YAML-based stream selection:
+
+```yaml
+stream_selector_mode: Custom
+stream_selector: my-selector.yml
+```
+
+Provides complete control over audio and subtitle selection with:
+- Language filtering
+- Title allowlists/blocklists  
+- Custom conditions
+- Content-based rules
+
+Reference: `CustomStreamSelector.cs:14-262`
+
+### Troubleshooting Mode
+
+Special mode for diagnostics:
+
+```yaml
+stream_selector_mode: Troubleshooting
+```
+
+Used internally for playback troubleshooting with forced stream selection.
+
+Reference: `FFmpegLibraryProcessService.cs:167`
+
+## Custom Stream Selectors
+
+Custom selectors are defined in YAML files stored in the channel stream selectors folder:
+
+```
+~/.local/share/ersatztv/scripts/channel-stream-selectors/
+```
+
+Reference: `FileSystemLayout.cs:64,191`, `CustomStreamSelector.cs:25-27`
+
+### Selector Structure
+
+Basic selector file structure:
+
+```yaml
+items:
+  - audio_language:
+      - eng
+      - en
+    subtitle_language:
+      - eng
+      - en
+      
+  - audio_language:
+      - jpn
+      - ja
+    subtitle_language:
+      - eng
+      - en
+```
+
+Reference: `StreamSelector.cs:3-6`, `StreamSelectorItem.cs:5-36`
+
+### Selector Items
+
+Each item defines matching criteria and selection preferences:
+
+```csharp
+public class StreamSelectorItem
+{
+    public List<string> AudioLanguages { get; set; }
+    public List<string> AudioTitleAllowlist { get; set; }
+    public List<string> AudioTitleBlocklist { get; set; }
+    public string AudioCondition { get; set; }
+    
+    public bool DisableSubtitles { get; set; }
+    public List<string> SubtitleLanguages { get; set; }
+    public List<string> SubtitleTitleAllowlist { get; set; }
+    public List<string> SubtitleTitleBlocklist { get; set; }
+    public string SubtitleCondition { get; set; }
+    
+    public string ContentCondition { get; set; }
+}
+```
+
+Reference: `StreamSelectorItem.cs:5-36`
+
+## Audio Selection
+
+Configure audio stream selection criteria:
+
+### Language Matching
+
+Match audio by language codes:
+
+```yaml
+items:
+  - audio_language:
+      - eng
+      - en
+```
+
+Supports:
+- ISO 639-2 (3-letter) codes: `eng`, `jpn`, `fra`
+- ISO 639-1 (2-letter) codes: `en`, `ja`, `fr`
+- Wildcard: `*` matches any language
+- Glob patterns: `en*` matches `eng`, `en-US`, etc.
+
+Reference: `CustomStreamSelector.cs:67-89`
+
+### Title Filtering
+
+Filter by audio track title:
+
+**Allowlist** (must contain one of these):
+```yaml
+items:
+  - audio_title_allowlist:
+      - commentary
+      - director
+```
+
+**Blocklist** (must not contain any of these):
+```yaml
+items:
+  - audio_title_blocklist:
+      - commentary
+      - descriptive
+```
+
+Title matching is case-insensitive and uses substring matching.
+
+Reference: `CustomStreamSelector.cs:96-111`
+
+### Audio Conditions
+
+Custom expressions for audio stream properties:
+
+```yaml
+items:
+  - audio_condition: "channels >= 6"
+```
+
+**Available variables:**
+- `id` - Stream index
+- `title` - Track title (lowercase)
+- `lang` - Language code (lowercase)
+- `default` - Default flag (true/false)
+- `forced` - Forced flag (true/false)
+- `codec` - Codec name (lowercase)
+- `channels` - Channel count
+
+Reference: `CustomStreamSelector.cs:264-283`
+
+**Example conditions:**
+
+```yaml
+# Prefer surround sound
+audio_condition: "channels >= 6"
+
+# Avoid DTS codec
+audio_condition: "codec != 'dts'"
+
+# Default and not commentary
+audio_condition: "default == true && !Contains(title, 'commentary')"
+
+# Specific stream ID
+audio_condition: "id == 2"
+```
+
+## Subtitle Selection
+
+Configure subtitle stream selection:
+
+### Language Matching
+
+Match subtitle by language:
+
+```yaml
+items:
+  - subtitle_language:
+      - eng
+      - en
+```
+
+Same wildcard and glob support as audio languages.
+
+Reference: `CustomStreamSelector.cs:155-177`
+
+### Disable Subtitles
+
+Explicitly disable subtitle selection:
+
+```yaml
+items:
+  - disable_subtitles: true
+```
+
+Useful for conditions where no subtitles should display.
+
+Reference: `CustomStreamSelector.cs:142-146`
+
+### Title Filtering
+
+Filter by subtitle track title:
+
+```yaml
+items:
+  - subtitle_title_allowlist:
+      - sdh
+      - cc
+  - subtitle_title_blocklist:
+      - signs
+      - songs
+```
+
+Reference: `CustomStreamSelector.cs:184-199`
+
+### Subtitle Conditions
+
+Custom expressions for subtitle properties:
+
+```yaml
+items:
+  - subtitle_condition: "forced == true"
+```
+
+**Available variables:**
+- `id` - Stream index  
+- `title` - Track title (lowercase)
+- `lang` - Language code (lowercase)
+- `default` - Default flag (true/false)
+- `forced` - Forced flag (true/false)
+- `sdh` - SDH flag (true/false)
+- `codec` - Codec name (lowercase)
+- `external` - External file flag (true/false)
+
+Reference: `CustomStreamSelector.cs:285-304`
+
+**Example conditions:**
+
+```yaml
+# Only forced subtitles
+subtitle_condition: "forced == true"
+
+# SDH English subtitles
+subtitle_condition: "sdh == true && lang == 'eng'"
+
+# External subtitle files only
+subtitle_condition: "external == true"
+
+# Prefer default, fallback to forced
+subtitle_condition: "default == true || forced == true"
+```
+
+## Content Conditions
+
+Apply selector items conditionally based on content context:
+
+```yaml
+items:
+  - content_condition: "channel_number == '1'"
+    audio_language:
+      - eng
+```
+
+**Available variables:**
+- `channel_number` - Channel number (string)
+- `channel_name` - Channel name (string)
+- `time_of_day_seconds` - Seconds since midnight
+- `day_of_week` - Day of week index (0 = first day per locale)
+
+Reference: `CustomStreamSelector.cs:307-325`, `CustomStreamSelector.cs:347-351`
+
+**Example conditions:**
+
+```yaml
+# Different audio for prime time
+content_condition: "time_of_day_seconds >= 64800 && time_of_day_seconds <= 82800"
+
+# Weekend schedule
+content_condition: "day_of_week == 0 || day_of_week == 6"
+
+# Specific channel
+content_condition: "channel_number == '24.1'"
+
+# Channel name pattern
+content_condition: "Contains(channel_name, 'Movie')"
+```
+
+## Selection Priority
+
+Selector items are evaluated in order:
+
+1. **First matching item wins**
+2. Items are processed top-to-bottom
+3. First item where both audio AND subtitle criteria match is selected
+4. If no item fully matches, no streams selected
+
+### Language Priority
+
+Within a language list, earlier languages have priority:
+
+```yaml
+audio_language:
+  - eng  # First choice
+  - en   # Second choice  
+  - und  # Fallback
+```
+
+Reference: `CustomStreamSelector.cs:67-89`
+
+## Complete Examples
+
+### English Content, Japanese with Subtitles
+
+```yaml
+items:
+  # English audio: no subtitles
+  - audio_language:
+      - eng
+      - en
+    disable_subtitles: true
+    
+  # Japanese audio: English subtitles
+  - audio_language:
+      - jpn
+      - ja
+    subtitle_language:
+      - eng
+      - en
+      
+  # Other languages: try English subtitles
+  - audio_language:
+      - "*"
+    subtitle_language:
+      - eng
+      - en
+```
+
+### Surround Sound Preference
+
+```yaml
+items:
+  # Prefer 5.1+ English audio
+  - audio_language:
+      - eng
+      - en
+    audio_condition: "channels >= 6"
+    subtitle_language:
+      - eng
+      - en
+      
+  # Fallback to any English audio
+  - audio_language:
+      - eng
+      - en
+    subtitle_language:
+      - eng
+      - en
+```
+
+### Time-Based Selection
+
+```yaml
+items:
+  # Daytime (6 AM - 10 PM): descriptive audio
+  - content_condition: "time_of_day_seconds >= 21600 && time_of_day_seconds <= 79200"
+    audio_title_allowlist:
+      - descriptive
+    subtitle_language:
+      - eng
+      - en
+      
+  # Other times: standard audio
+  - audio_language:
+      - eng
+      - en
+    audio_title_blocklist:
+      - descriptive
+      - commentary
+```
+
+### Forced Subtitles Only
+
+```yaml
+items:
+  - audio_language:
+      - eng
+      - en
+    subtitle_condition: "forced == true"
+    subtitle_language:
+      - eng
+      - en
+```
+
+### Multi-Channel Configuration
+
+```yaml
+items:
+  # Movie channel: surround sound, forced subs
+  - content_condition: "Contains(channel_name, 'Movie')"
+    audio_condition: "channels >= 6"
+    subtitle_condition: "forced == true"
+    
+  # Kids channel: stereo, SDH subtitles  
+  - content_condition: "Contains(channel_name, 'Kids')"
+    audio_condition: "channels == 2"
+    subtitle_condition: "sdh == true"
+    
+  # Default: any English
+  - audio_language:
+      - eng
+      - en
+```
+
+## Troubleshooting Selectors
+
+### Selector Not Working
+
+**Check:**
+1. YAML syntax is valid
+2. File is in correct directory (`channel-stream-selectors/`)
+3. Channel has `stream_selector_mode: Custom`
+4. Selector file name matches channel configuration
+5. Item criteria actually match content streams
+
+### Wrong Stream Selected
+
+**Debug:**
+1. Check item order (first match wins)
+2. Verify language codes match stream metadata
+3. Test conditions with simple values first
+4. Check logs for stream metadata
+
+### No Streams Selected
+
+**Possible causes:**
+1. No items match the content
+2. Conditions too restrictive
+3. Language mismatch
+4. Content lacks streams matching criteria
+
+**Solution:** Add fallback item with wildcards:
+
+```yaml
+items:
+  # ... specific rules ...
+  
+  # Fallback: any audio, any subtitle
+  - audio_language:
+      - "*"
+    subtitle_language:
+      - "*"
+```
+
+## Selector File Management
+
+Manage selector files through the filesystem:
+
+### Create Selector
+
+1. Create YAML file in selectors directory
+2. Define items with selection criteria
+3. Reference in channel configuration
+
+### List Available Selectors
+
+Query available selectors:
+
+```csharp
+GetChannelStreamSelectors query
+```
+
+Reference: `GetChannelStreamSelectorsHandler.cs:6-10`
+
+### Selector Location
+
+Default location:
+```
+~/.local/share/ersatztv/scripts/channel-stream-selectors/
+```
+
+Reference: `FileSystemLayout.cs:64,191`
+
+## Performance Considerations
+
+### Expression Evaluation
+
+Conditions evaluate once per content item:
+- Keep expressions simple
+- Avoid redundant calculations
+- Use early items for common cases
+
+### Stream Analysis
+
+Stream metadata read from media files:
+- First-time analysis cached
+- Subsequent plays use cached data
+- Performance impact minimal
+
+## Best Practices
+
+### Organization
+
+**Use descriptive selector names:**
+```
+english-with-forced-subs.yml
+multilingual-accessibility.yml
+surround-sound-preferred.yml
+```
+
+### Fallback Rules
+
+**Always include fallback:**
+```yaml
+items:
+  # Specific rules...
+  
+  # Final fallback
+  - audio_language:
+      - "*"
+```
+
+### Condition Complexity
+
+**Prefer simple conditions:**
+```yaml
+# Good
+audio_condition: "channels >= 6"
+
+# Avoid
+audio_condition: "(channels >= 6 && codec == 'aac') || (channels >= 2 && codec == 'ac3' && default == true)"
+```
+
+### Testing
+
+Test selectors with:
+- Variety of content types
+- Different language configurations  
+- Edge cases (missing streams, unusual metadata)
+
+<Tip>
+Start with Default mode and only switch to Custom when you need specific stream selection logic.
+</Tip>
+
+<Note>
+Stream selector evaluation happens during playout building. Changes to selectors require channel restart to take effect.
+</Note>
+
+<Warning>
+Custom stream selectors with no matching items result in no audio/subtitle selection. Always include a fallback item.
+</Warning>

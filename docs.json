@@ -1,122 +1,139 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "ErsatzTV",
+  "theme": "maple",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#ddfcfc",
+    "light": "#21baa8",
+    "dark": "#4f791f"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/60eec8c3-2904-44d9-94d3-a204a41cdb1d.png",
+  "logo": {
+    "light": "https://media.brand.dev/fbacf8df-6467-4fc8-92a0-090c22823094.png",
+    "dark": "https://media.brand.dev/fbacf8df-6467-4fc8-92a0-090c22823094.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/ErsatzTV/ErsatzTV"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ErsatzTV/ErsatzTV"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/channels",
+              "concepts/schedules",
+              "concepts/playouts",
+              "concepts/collections"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Media Sources",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "media-sources/local-libraries",
+              "media-sources/plex",
+              "media-sources/jellyfin",
+              "media-sources/emby"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Scheduling",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "scheduling/overview",
+              "scheduling/classic-schedules",
+              "scheduling/block-schedules",
+              "scheduling/sequential-schedules",
+              "scheduling/scripted-schedules"
+            ]
+          },
+          {
+            "group": "Streaming & Playback",
+            "pages": [
+              "streaming/iptv",
+              "streaming/hdhr",
+              "streaming/transcoding",
+              "streaming/hardware-acceleration"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/ffmpeg-profiles",
+              "configuration/database",
+              "configuration/authentication",
+              "configuration/environment-variables"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/graphics-engine",
+              "advanced/watermarks",
+              "advanced/subtitles",
+              "advanced/filler-content",
+              "advanced/stream-selectors"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/docker-setup",
+              "guides/music-videos",
+              "guides/epg-customization",
+              "guides/troubleshooting"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api/introduction",
+              "api/authentication"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Endpoints",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/channels",
+              "api/schedules",
+              "api/libraries",
+              "api/media-items",
+              "api/collections",
+              "api/ffmpeg-profiles"
+            ]
+          },
+          {
+            "group": "IPTV & Streaming",
+            "pages": [
+              "api/iptv",
+              "api/hdhr",
+              "api/xmltv"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

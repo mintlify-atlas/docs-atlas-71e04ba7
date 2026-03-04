@@ -1,0 +1,506 @@
+---
+title: EPG Customization
+description: Customize XMLTV/EPG guide data with templates for complete control over program information
+---
+
+ErsatzTV generates XMLTV (Electronic Program Guide) data for all channels. You can fully customize how programs appear in the EPG using Scriban templates.
+
+## Overview
+
+The EPG system uses **Scriban** templates to generate XMLTV data. Each media type (movies, episodes, music videos, etc.) has its own template that controls what appears in the guide.
+
+### Template Locations
+
+**Default templates** (included with ErsatzTV):
+```
+ErsatzTV/Resources/Templates/
+  _channel.sbntxt        # Channel definition
+  _episode.sbntxt        # TV episodes
+  _movie.sbntxt          # Movies
+  _musicVideo.sbntxt     # Music videos
+  _song.sbntxt           # Audio-only songs
+  _otherVideo.sbntxt     # Other videos
+  _remoteStream.sbntxt   # Remote streams
+```
+
+**Custom templates** (user overrides):
+```
+/config/templates/
+  channel.sbntxt         # Override channel template
+  episode.sbntxt         # Override episode template
+  movie.sbntxt           # Override movie template
+  musicVideo.sbntxt      # Override music video template
+  song.sbntxt            # Override song template
+  otherVideo.sbntxt      # Override other video template
+  remoteStream.sbntxt    # Override remote stream template
+```
+
+<Warning>
+Default templates start with an underscore (`_`). Create custom templates WITHOUT the underscore to override defaults. Never edit the default templates directly.
+</Warning>
+
+## Guide Mode
+
+ErsatzTV supports two guide modes that control EPG visibility:
+
+<Tabs>
+  <Tab title="Normal">
+    All scheduled content appears in the EPG guide.
+    
+    ```
+    GuideMode: Normal
+    ```
+    
+    **Use cases:**
+    - Standard TV channels
+    - When viewers should see all content
+  </Tab>
+  <Tab title="Filler">
+    Content is hidden from the EPG guide. Use for commercials, bumpers, or other interstitial content that shouldn't appear in program listings.
+    
+    ```
+    GuideMode: Filler
+    ```
+    
+    **Use cases:**
+    - Commercial breaks
+    - Channel bumpers
+    - Station IDs
+    - Filler content between programs
+  </Tab>
+</Tabs>
+
+### Setting Guide Mode
+
+**In Classic Schedules:**
+
+1. Edit schedule item
+2. Set **Guide Mode** to Normal or Filler
+3. Filler items won't appear in EPG but will still play
+
+**In Block Schedules:**
+
+Guide mode is determined by the deco configuration and block item settings.
+
+## Movie Template
+
+### Default Movie Template
+
+```xml movie.sbntxt
+<programme start="{{ programme_start }}" stop="{{ programme_stop }}" channel="{{ channel_id }}">
+  {{ if has_custom_title }}
+      <title lang="en">{{ custom_title }}</title>
+  {{ else }}
+      <title lang="en">{{ movie_title }}</title>
+      {{ if movie_has_plot }}
+        <desc lang="en">{{ movie_plot }}</desc>
+      {{ end }}
+      {{ if movie_has_year }}
+        <date>{{ movie_year }}</date>
+      {{ end }}
+      <category lang="en">Movie</category>
+      {{ for genre in movie_genres }}
+        <category lang="en">{{ genre }}</category>
+      {{ end }}
+      {{ if movie_has_artwork }}
+        <icon src="{{ movie_artwork_url }}" />
+      {{ end }}
+  {{ end }}
+  {{ if movie_has_content_rating }}
+    {{ for rating in movie_content_rating | string.split '/' }}
+        {{ if rating | string.starts_with 'us:' }}
+          <rating system="MPAA">
+        {{ else }}
+          <rating>
+        {{ end }}
+          <value>{{ rating | string.replace 'us:' '' }}</value>
+        </rating>
+    {{ end }}
+  {{ end }}
+  <previously-shown />
+</programme>
+```
+
+### Available Movie Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `programme_start` | string | Start time (XMLTV format) |
+| `programme_stop` | string | Stop time (XMLTV format) |
+| `channel_id` | string | Channel identifier |
+| `channel_id_legacy` | string | Legacy channel ID |
+| `channel_number` | string | Channel number |
+| `has_custom_title` | bool | True if custom title set |
+| `custom_title` | string | Custom EPG title |
+| `movie_title` | string | Movie title |
+| `movie_has_plot` | bool | True if plot exists |
+| `movie_plot` | string | Movie plot/description |
+| `movie_has_year` | bool | True if year exists |
+| `movie_year` | int | Release year |
+| `movie_genres` | array | List of genres |
+| `movie_has_artwork` | bool | True if artwork exists |
+| `movie_artwork_url` | string | Poster URL |
+| `movie_has_content_rating` | bool | True if rating exists |
+| `movie_content_rating` | string | Content rating |
+| `movie_guids` | array | External IDs (IMDb, TMDb, etc.) |
+
+## Episode Template
+
+### Default Episode Template
+
+```xml episode.sbntxt
+<programme start="{{ programme_start }}" stop="{{ programme_stop }}" channel="{{ channel_id }}">
+  {{ if has_custom_title }}
+      <title lang="en">{{ custom_title }}</title>
+  {{ else }}
+      <title lang="en">{{ show_title }}</title>
+      {{ if episode_has_title }}
+        <sub-title lang="en">{{ episode_title }}</sub-title>
+      {{ end }}
+      {{ if episode_has_plot }}
+        <desc lang="en">{{ episode_plot }}</desc>
+      {{ end }}
+      <category lang="en">Series</category>
+      {{ for genre in show_genres }}
+        <category lang="en">{{ genre }}</category>
+      {{ end }}
+      {{ if episode_has_artwork }}
+        <icon src="{{ episode_artwork_url }}" />
+        <image type="poster" size="3">{{ episode_artwork_url }}</image>
+      {{ end }}
+      {{ if episode_has_thumbnail }}
+        <image type="still" orient="L" size="3">{{ episode_thumbnail_url }}</image>
+      {{ end }}
+  {{ end }}
+  <episode-num system="onscreen">S{{ season_number | math.format '00' }}E{{ episode_number | math.format '00' }}</episode-num>
+  <episode-num system="xmltv_ns">{{ season_number - 1 }}.{{ episode_number - 1 }}.0/1</episode-num>
+  {{ if show_has_content_rating }}
+    {{ for rating in show_content_rating | string.split '/' }}
+        {{ if rating | string.downcase | string.starts_with 'us:' }}
+          <rating system="VCHIP">
+        {{ else }}
+          <rating>
+        {{ end }}
+          <value>{{ rating | string.replace 'us:' '' | string.replace 'US:' '' }}</value>
+        </rating>
+    {{ end }}
+  {{ end }}
+  <previously-shown />
+</programme>
+```
+
+### Available Episode Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `programme_start` | string | Start time |
+| `programme_stop` | string | Stop time |
+| `channel_id` | string | Channel identifier |
+| `has_custom_title` | bool | Custom title flag |
+| `custom_title` | string | Custom EPG title |
+| `show_title` | string | TV show title |
+| `episode_has_title` | bool | Episode title exists |
+| `episode_title` | string | Episode title |
+| `episode_has_plot` | bool | Episode plot exists |
+| `episode_plot` | string | Episode description |
+| `show_has_year` | bool | Show year exists |
+| `show_year` | int | Show release year |
+| `show_genres` | array | Show genres |
+| `episode_has_artwork` | bool | Episode poster exists |
+| `episode_artwork_url` | string | Episode poster URL |
+| `episode_has_thumbnail` | bool | Episode thumbnail exists |
+| `episode_thumbnail_url` | string | Episode still URL |
+| `season_number` | int | Season number |
+| `episode_number` | int | Episode number |
+| `show_has_content_rating` | bool | Show rating exists |
+| `show_content_rating` | string | Show content rating |
+| `show_guids` | array | Show external IDs |
+| `episode_guids` | array | Episode external IDs |
+
+## Music Video Template
+
+### Available Music Video Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `artist_title` | string | Artist name |
+| `music_video_title` | string | Song/video title |
+| `music_video_has_plot` | bool | Description exists |
+| `music_video_plot` | string | Video description |
+| `music_video_has_year` | bool | Release year exists |
+| `music_video_year` | int | Release year |
+| `music_video_genres` | array | Video genres |
+| `artist_genres` | array | Artist genres |
+| `music_video_has_artwork` | bool | Artwork exists |
+| `music_video_artwork_url` | string | Artwork URL |
+| `music_video_has_track` | bool | Track number exists |
+| `music_video_track` | int | Track number |
+| `music_video_has_album` | bool | Album exists |
+| `music_video_album` | string | Album name |
+| `music_video_has_release_date` | bool | Release date exists |
+| `music_video_release_date` | string | Release date |
+| `music_video_all_artists` | array | All artists (featuring, etc.) |
+| `music_video_studios` | array | Studios/labels |
+| `music_video_directors` | array | Video directors |
+
+## Custom EPG Data
+
+You can expose custom data to the graphics engine using the `etv:` XML namespace:
+
+```xml
+<programme start="{{ programme_start }}" stop="{{ programme_stop }}" channel="{{ channel_id }}">
+  <title lang="en">{{ movie_title }}</title>
+  
+  <!-- Custom data for graphics engine -->
+  <etv:custom_field>{{ movie_year }}</etv:custom_field>
+  <etv:rating_text>{{ movie_content_rating }}</etv:rating_text>
+</programme>
+```
+
+<Note>
+All `etv:` nodes are:
+- Passed to the graphics engine as EPG template data
+- Stripped from XMLTV when requested by clients
+- Available as strings (not numbers) in graphics templates
+</Note>
+
+## XMLTV Settings
+
+Configure EPG behavior in **Settings** > **General**:
+
+### XMLTV Days to Build
+
+Controls how many days of EPG data to generate.
+
+```
+XMLTV Days To Build: 3
+```
+
+- Must be ≤ **Playout Days To Build**
+- Smaller values improve performance
+- Larger values provide more guide data
+
+<Tip>
+Set **Playout Days To Build** to 7 for scheduling, but **XMLTV Days To Build** to 1-2 for performance if your IPTV client doesn't need a full week of EPG data.
+</Tip>
+
+### XMLTV Time Zone
+
+Controls time zone in generated XMLTV:
+
+<Tabs>
+  <Tab title="Local">
+    Uses local server time zone (from TZ environment variable)
+    
+    ```
+    XMLTV Time Zone: Local
+    ```
+  </Tab>
+  <Tab title="UTC">
+    Uses UTC time zone (recommended for international use)
+    
+    ```
+    XMLTV Time Zone: UTC
+    ```
+  </Tab>
+</Tabs>
+
+### XMLTV Block Behavior
+
+Controls how block schedules appear in EPG:
+
+<Tabs>
+  <Tab title="Split Time Evenly">
+    Default behavior. Block time is split evenly among all visible items.
+    
+    ```
+    XMLTV Block Behavior: Split Time Evenly
+    ```
+    
+    **Example:**
+    - 1-hour block with 3 visible items
+    - Each item shows as 20 minutes in EPG
+  </Tab>
+  <Tab title="Use Actual Times">
+    Uses real playback times for items in EPG.
+    
+    ```
+    XMLTV Block Behavior: Use Actual Times
+    ```
+    
+    **Note:** This creates EPG gaps when filler is used or items are hidden.
+  </Tab>
+</Tabs>
+
+### Instance ID
+
+Disambiguate EPG data when running multiple ErsatzTV instances:
+
+```bash
+ETV_INSTANCE_ID=home
+```
+
+Channel identifiers become:
+```
+100.home.ersatztv.org  # Instead of 100.ersatztv.org
+```
+
+## Accessing XMLTV Data
+
+### URLs
+
+**Without authentication:**
+```
+http://localhost:8409/iptv/xmltv.xml
+```
+
+**With access token:**
+```
+http://localhost:8409/iptv/xmltv.xml?access_token=YOUR_TOKEN
+```
+
+**Behind reverse proxy with base URL:**
+```
+http://yourdomain.com/ersatztv/iptv/xmltv.xml
+```
+
+### M3U Playlist
+
+The channel playlist already includes the XMLTV URL:
+
+```
+http://localhost:8409/iptv/channels.m3u
+```
+
+## Advanced Template Examples
+
+### Add Director to Movie EPG
+
+```xml
+<programme start="{{ programme_start }}" stop="{{ programme_stop }}" channel="{{ channel_id }}">
+  <title lang="en">{{ movie_title }}</title>
+  {{ if movie_has_plot }}
+    <desc lang="en">{{ movie_plot }}</desc>
+  {{ end }}
+  
+  <!-- Add director if available -->
+  {{ if movie_directors }}
+    {{ for director in movie_directors }}
+      <credits>
+        <director>{{ director }}</director>
+      </credits>
+    {{ end }}
+  {{ end }}
+  
+  <category lang="en">Movie</category>
+</programme>
+```
+
+<Note>
+Check default templates for available variables like `movie_directors`, `movie_actors`, etc. These may vary by media type.
+</Note>
+
+### Conditional Categories
+
+```xml
+{{ if movie_year >= 2020 }}
+  <category lang="en">New Release</category>
+{{ else if movie_year >= 2010 }}
+  <category lang="en">Recent</category>
+{{ else }}
+  <category lang="en">Classic</category>
+{{ end }}
+```
+
+### Multiple Images
+
+```xml
+{{ if episode_has_artwork }}
+  <icon src="{{ episode_artwork_url }}" />
+  <image type="poster" size="3">{{ episode_artwork_url }}</image>
+{{ end }}
+{{ if episode_has_thumbnail }}
+  <image type="still" orient="L" size="3">{{ episode_thumbnail_url }}</image>
+{{ end }}
+```
+
+## Scriban Functions
+
+Useful Scriban functions for templates:
+
+### String Functions
+
+```scriban
+{{ movie_title | string.upcase }}           # UPPERCASE
+{{ movie_title | string.downcase }}         # lowercase
+{{ movie_title | string.capitalize }}       # Capitalize
+{{ movie_plot | string.truncate 100 }}      # Limit to 100 chars
+{{ movie_title | string.replace "The" "" }} # Remove "The"
+```
+
+### Math Functions
+
+```scriban
+{{ season_number | math.format '00' }}      # Zero-pad: 01, 02
+{{ movie_year + 10 }}                       # Add 10 to year
+{{ episode_number | math.abs }}             # Absolute value
+```
+
+### Array Functions
+
+```scriban
+{{ movie_genres | array.first }}            # First genre
+{{ movie_genres | array.last }}             # Last genre
+{{ movie_genres | array.size }}             # Count genres
+```
+
+## Troubleshooting
+
+### Template Syntax Errors
+
+**Check ErsatzTV logs** for template parsing errors:
+
+```bash
+docker-compose logs -f ersatztv | grep template
+```
+
+Common issues:
+- Missing `{{ end }}` tags
+- Unclosed `{{ if }}` blocks
+- Typos in variable names
+
+### EPG Not Updating
+
+1. **Trigger manual rebuild**: Edit and save any schedule
+2. **Check XMLTV URL**: Visit `http://localhost:8409/iptv/xmltv.xml` directly
+3. **Clear IPTV client cache**: Some clients cache EPG data
+
+### Missing Program Information
+
+1. **Verify metadata**: Check if source media has the data (NFO files, media server)
+2. **Deep scan library**: Trigger a deep scan to update metadata
+3. **Check template variables**: Use `{{ if variable_exists }}` guards
+
+### 500 Errors Serving XMLTV
+
+Fixed in v26.2.0+. If experiencing issues:
+- Update to latest ErsatzTV version
+- Check for concurrent XMLTV reads/writes in logs
+- Ensure sufficient disk space in `/config`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Graphics Engine" icon="paintbrush" href="/advanced/graphics-engine">
+    Use EPG data in custom graphics overlays
+  </Card>
+  <Card title="Channel Configuration" icon="tv" href="/channels/configuration">
+    Configure channel settings
+  </Card>
+  <Card title="Classic Schedules" icon="clock" href="/scheduling/classic-schedules">
+    Set guide mode and custom titles
+  </Card>
+  <Card title="Scriban Documentation" icon="book" href="https://github.com/scriban/scriban">
+    Learn more about Scriban template syntax
+  </Card>
+</CardGroup>

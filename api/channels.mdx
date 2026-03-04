@@ -1,0 +1,205 @@
+---
+title: 'Channels'
+description: 'Manage ErsatzTV channels via the REST API'
+---
+
+## Overview
+
+Channels are the core of ErsatzTV, representing virtual TV channels with scheduled content. The Channels API allows you to retrieve channel information and control channel playouts.
+
+## Get All Channels
+
+Retrieve a list of all configured channels.
+
+```bash
+GET /api/channels
+```
+
+### Response
+
+<ResponseField name="channels" type="array">
+  Array of channel objects
+</ResponseField>
+
+<Expandable title="Channel Object Properties">
+  <ResponseField name="id" type="integer" required>
+    Unique channel identifier
+  </ResponseField>
+  
+  <ResponseField name="number" type="string" required>
+    Channel number (e.g., "1", "2.1", "100")
+  </ResponseField>
+  
+  <ResponseField name="name" type="string" required>
+    Channel name displayed in guides
+  </ResponseField>
+  
+  <ResponseField name="ffmpegProfile" type="string" required>
+    Name of the FFmpeg profile used for transcoding
+  </ResponseField>
+  
+  <ResponseField name="language" type="string" required>
+    Primary language code (e.g., "eng", "spa")
+  </ResponseField>
+  
+  <ResponseField name="streamingMode" type="string" required>
+    Streaming mode for the channel. Values:
+    - `HttpLiveStreamingDirect` - HLS direct streaming
+    - `HttpLiveStreamingSegmenter` - HLS with segmenter
+    - `TransportStream` - MPEG-TS legacy mode
+    - `TransportStreamHybrid` - MPEG-TS hybrid mode
+  </ResponseField>
+</Expandable>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/api/channels
+```
+
+### Example Response
+
+```json
+[
+  {
+    "id": 1,
+    "number": "1",
+    "name": "Movies 24/7",
+    "ffmpegProfile": "Default",
+    "language": "eng",
+    "streamingMode": "HttpLiveStreamingSegmenter"
+  },
+  {
+    "id": 2,
+    "number": "2",
+    "name": "Classic TV",
+    "ffmpegProfile": "Hardware Transcoding",
+    "language": "eng",
+    "streamingMode": "TransportStreamHybrid"
+  }
+]
+```
+
+## Reset Channel Playout
+
+Reset a channel's playout schedule, triggering a rebuild from the current time.
+
+```bash
+POST /api/channels/{channelNumber}/playout/reset
+```
+
+### Path Parameters
+
+<ParamField path="channelNumber" type="string" required>
+  The channel number to reset (e.g., "1", "2.1")
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="integer">
+  - `200 OK` - Playout reset queued successfully
+  - `404 Not Found` - Channel does not exist
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:8409/api/channels/1/playout/reset
+```
+
+### When to Reset Playouts
+
+Resetting a playout is useful when:
+
+- Schedule changes need to be applied immediately
+- Content in collections has been updated
+- Playout appears stuck or out of sync
+- Testing schedule configurations
+
+<Note>
+  Resetting a playout rebuilds the schedule from the current time forward. Active streams may be interrupted briefly during the reset.
+</Note>
+
+## Implementation Details
+
+From `ErsatzTV/Controllers/Api/ChannelController.cs:24-34`:
+
+```csharp
+public async Task<IActionResult> ResetPlayout(string channelNumber)
+{
+    Option<int> maybePlayoutId = await mediator.Send(
+        new GetPlayoutIdByChannelNumber(channelNumber)
+    );
+    
+    foreach (int playoutId in maybePlayoutId)
+    {
+        await workerChannel.WriteAsync(
+            new BuildPlayout(playoutId, PlayoutBuildMode.Reset)
+        );
+        return new OkResult();
+    }
+    
+    return new NotFoundResult();
+}
+```
+
+The reset operation:
+
+1. Looks up the playout ID associated with the channel number
+2. Queues a `BuildPlayout` background task with `PlayoutBuildMode.Reset`
+3. Returns immediately while the rebuild happens asynchronously
+
+## Channel Response Model
+
+Defined in `ErsatzTV.Core/Api/Channels/ChannelResponseModel.cs:5-12`:
+
+```csharp
+public record ChannelResponseModel(
+    int Id,
+    string Number,
+    string Name,
+    [property: JsonProperty("ffmpegProfile")]
+    string FFmpegProfile,
+    string Language,
+    string StreamingMode
+);
+```
+
+## Streaming Modes
+
+Channels support different streaming modes optimized for various clients:
+
+<CardGroup cols={2}>
+  <Card title="HLS Direct" icon="play">
+    Direct HLS streaming without segmentation. Best for compatible players.
+  </Card>
+  
+  <Card title="HLS Segmenter" icon="film">
+    HLS with FFmpeg segmenter. Maximum compatibility with all HLS clients.
+  </Card>
+  
+  <Card title="Transport Stream" icon="tv">
+    Legacy MPEG-TS streaming. For older IPTV clients.
+  </Card>
+  
+  <Card title="TS Hybrid" icon="broadcast-tower">
+    Hybrid MPEG-TS with improved reliability.
+  </Card>
+</CardGroup>
+
+## Related Endpoints
+
+- [Get Channel Guide](/api/xmltv) - Retrieve XMLTV EPG data
+- [IPTV Playlist](/api/iptv) - M3U playlist with channel URLs
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Schedules API" icon="calendar" href="/api/schedules">
+    Manage channel schedules and programming
+  </Card>
+  
+  <Card title="FFmpeg Profiles" icon="gear" href="/api/ffmpeg-profiles">
+    Configure transcoding profiles for channels
+  </Card>
+</CardGroup>

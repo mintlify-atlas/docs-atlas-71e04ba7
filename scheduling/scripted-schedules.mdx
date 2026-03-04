@@ -1,0 +1,671 @@
+---
+title: Scripted Schedules
+description: JavaScript-based schedules for maximum flexibility and custom logic
+---
+
+Scripted schedules use external scripts (typically JavaScript) to programmatically build channel playouts. This provides maximum flexibility, allowing you to implement custom logic, make dynamic decisions, and integrate with external systems.
+
+## Overview
+
+Scripted schedules are built by the `ScriptedPlayoutBuilder` (ErsatzTV.Core/Scheduling/ScriptedScheduling/ScriptedPlayoutBuilder.cs:13), which:
+
+1. Initializes the scheduling engine
+2. Executes your script with schedule build arguments
+3. Your script makes API calls to the scheduling engine
+4. Collects the generated playout items
+
+## Configuration
+
+To use a scripted schedule, set your playout's **Schedule File** to the script path and optional arguments:
+
+```bash
+/path/to/schedule.js
+```
+
+Or with arguments:
+
+```bash
+/path/to/schedule.js --theme dark --channel sports
+```
+
+<Note>
+  The script file must be executable on your system. For JavaScript, ensure Node.js is installed and the script has appropriate shebang (`#!/usr/bin/env node`).
+</Note>
+
+## Script Arguments
+
+Your script receives these arguments automatically:
+
+<ParamField path="arg[1]" type="string">
+  Base URL for API calls (e.g., `http://localhost:8409`)
+</ParamField>
+
+<ParamField path="arg[2]" type="string">
+  Build session ID (UUID) for this schedule build
+</ParamField>
+
+<ParamField path="arg[3]" type="string">
+  Build mode: `continue` or `reset`
+</ParamField>
+
+<ParamField path="arg[4+]" type="string">
+  Your custom arguments from the schedule file configuration
+</ParamField>
+
+## API Endpoints
+
+Scripted schedules interact with the scheduling engine through HTTP API endpoints:
+
+### Base URL Format
+
+```
+POST {baseUrl}/api/scheduling/scripted/{buildId}/{endpoint}
+```
+
+All endpoints are POST requests that accept and return JSON.
+
+### Content Definition Endpoints
+
+#### Add Collection
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/collection
+
+{
+  "key": "my-shows",
+  "collectionName": "TV Shows",
+  "playbackOrder": "Chronological"
+}
+```
+
+<ParamField path="key" type="string" required>
+  Unique identifier for this content
+</ParamField>
+
+<ParamField path="collectionName" type="string" required>
+  Name of the collection
+</ParamField>
+
+<ParamField path="playbackOrder" type="string" required>
+  Playback order (see [Playback Orders](/scheduling/overview#playback-orders))
+</ParamField>
+
+#### Add Multi-Collection
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/multi-collection
+
+{
+  "key": "all-content",
+  "multiCollectionName": "All Shows",
+  "playbackOrder": "Shuffle"
+}
+```
+
+#### Add Smart Collection
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/smart-collection
+
+{
+  "key": "recent",
+  "smartCollectionName": "Recent Additions",
+  "playbackOrder": "Chronological"
+}
+```
+
+#### Add Playlist
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/playlist
+
+{
+  "key": "weekend-list",
+  "playlistGroup": "Specials",
+  "playlist": "Weekend Shows"
+}
+```
+
+#### Add Search
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/search
+
+{
+  "key": "action",
+  "query": "genre:Action",
+  "playbackOrder": "Random"
+}
+```
+
+#### Add Show
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/show
+
+{
+  "key": "trek",
+  "guids": {
+    "tvdb": "70726",
+    "imdb": "tt0060028"
+  },
+  "playbackOrder": "SeasonEpisode"
+}
+```
+
+#### Add Marathon
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/marathon
+
+{
+  "key": "trek-marathon",
+  "guids": {},
+  "searches": ["title:*Star Trek*"],
+  "groupBy": "Show",
+  "shuffleGroups": false,
+  "itemPlaybackOrder": "Chronological",
+  "playAllItems": true
+}
+```
+
+#### Create Playlist
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/create-playlist
+
+{
+  "key": "custom-list",
+  "playlistItems": {
+    "sitcoms": 3,
+    "dramas": 2,
+    "movies": 1
+  }
+}
+```
+
+Creates a dynamic playlist by combining items from multiple content sources.
+
+### Content Instruction Endpoints
+
+#### Add All
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/add-all
+
+{
+  "content": "my-shows",
+  "customTitle": "Special Marathon",
+  "disableWatermarks": false
+}
+```
+
+#### Add Count
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/add-count
+
+{
+  "content": "movies",
+  "count": 3,
+  "customTitle": null,
+  "disableWatermarks": false
+}
+```
+
+#### Add Duration
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/add-duration
+
+{
+  "content": "shows",
+  "duration": "2h30m",
+  "fallback": "filler",
+  "trim": true,
+  "discardAttempts": 5,
+  "stopBeforeEnd": false,
+  "offlineTail": false,
+  "customTitle": null,
+  "disableWatermarks": false
+}
+```
+
+#### Pad to Next
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/pad-to-next
+
+{
+  "content": "filler",
+  "minutes": 30,
+  "fallback": null,
+  "trim": false,
+  "discardAttempts": 0,
+  "stopBeforeEnd": false,
+  "offlineTail": false,
+  "customTitle": null,
+  "disableWatermarks": true
+}
+```
+
+#### Pad Until
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/pad-until
+
+{
+  "content": "filler",
+  "padUntil": "14:00",
+  "tomorrow": false,
+  "fallback": null,
+  "trim": false,
+  "discardAttempts": 0,
+  "stopBeforeEnd": false,
+  "offlineTail": false,
+  "customTitle": null,
+  "disableWatermarks": true
+}
+```
+
+### Control Instruction Endpoints
+
+#### Wait Until
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/wait-until
+
+{
+  "waitUntil": "06:00",
+  "tomorrow": false,
+  "rewindOnReset": false
+}
+```
+
+#### Skip Items
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/skip-items
+
+{
+  "content": "shows",
+  "count": 5
+}
+```
+
+#### Skip to Item
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/skip-to-item
+
+{
+  "content": "show",
+  "season": 2,
+  "episode": 1
+}
+```
+
+#### Lock Guide Group
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/lock-guide-group
+
+{
+  "advance": true,
+  "customTitle": "Special Event"
+}
+```
+
+#### Unlock Guide Group
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/unlock-guide-group
+```
+
+#### Graphics On
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/graphics-on
+
+{
+  "graphicsElements": ["logo", "ticker"],
+  "variables": {
+    "team": "Red Sox",
+    "score": "5-3"
+  }
+}
+```
+
+#### Graphics Off
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/graphics-off
+
+{
+  "graphicsElements": ["ticker"]
+}
+```
+
+#### Watermark On
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/watermark-on
+
+{
+  "watermarks": ["channel-logo"]
+}
+```
+
+#### Watermark Off
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/watermark-off
+
+{
+  "watermarks": ["channel-logo"]
+}
+```
+
+#### Pre-Roll On
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/pre-roll-on
+
+{
+  "content": "commercials"
+}
+```
+
+#### Pre-Roll Off
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/pre-roll-off
+```
+
+#### Peek Next
+
+```javascript
+POST /api/scheduling/scripted/{buildId}/peek-next
+
+{
+  "content": "shows"
+}
+```
+
+Returns information about the next item that would be scheduled without actually scheduling it.
+
+## Example JavaScript Schedule
+
+```javascript
+#!/usr/bin/env node
+
+const axios = require('axios');
+
+const [, , baseUrl, buildId, mode, ...customArgs] = process.argv;
+
+const api = axios.create({
+  baseURL: `${baseUrl}/api/scheduling/scripted/${buildId}`,
+  headers: { 'Content-Type': 'application/json' }
+});
+
+async function buildSchedule() {
+  try {
+    // Define content
+    await api.post('/collection', {
+      key: 'sitcoms',
+      collectionName: 'Comedy Shows',
+      playbackOrder: 'Shuffle'
+    });
+    
+    await api.post('/collection', {
+      key: 'dramas',
+      collectionName: 'Drama Series',
+      playbackOrder: 'Chronological'
+    });
+    
+    await api.post('/collection', {
+      key: 'movies',
+      collectionName: 'Movies',
+      playbackOrder: 'Random'
+    });
+    
+    await api.post('/playlist', {
+      key: 'commercials',
+      playlistGroup: 'Ads',
+      playlist: 'Commercial Breaks'
+    });
+    
+    // Build schedule loop
+    while (true) {
+      // Morning block (6 AM - 12 PM)
+      await api.post('/wait-until', {
+        waitUntil: '06:00',
+        tomorrow: false,
+        rewindOnReset: mode === 'reset'
+      });
+      
+      await api.post('/pre-roll-on', { content: 'commercials' });
+      await api.post('/add-count', { content: 'sitcoms', count: 6 });
+      await api.post('/pre-roll-off');
+      
+      // Afternoon block (12 PM - 6 PM)
+      await api.post('/wait-until', { waitUntil: '12:00' });
+      await api.post('/add-duration', {
+        content: 'dramas',
+        duration: '6h',
+        stopBeforeEnd: true
+      });
+      
+      // Evening block (6 PM - 10 PM)
+      await api.post('/wait-until', { waitUntil: '18:00' });
+      
+      // Check what's next and decide
+      const nextItem = await api.post('/peek-next', { content: 'movies' });
+      
+      if (nextItem.data && nextItem.data.runtime > 180) {
+        // Long movie - play just one
+        await api.post('/add-count', { content: 'movies', count: 1 });
+      } else {
+        // Shorter content - fill time
+        await api.post('/add-duration', {
+          content: 'movies',
+          duration: '4h',
+          trim: true
+        });
+      }
+      
+      // Late night (10 PM - 6 AM)
+      await api.post('/wait-until', { waitUntil: '22:00' });
+      await api.post('/add-duration', {
+        content: 'sitcoms',
+        duration: '8h',
+        fallback: 'movies',
+        stopBeforeEnd: false
+      });
+      
+      // Loop to tomorrow
+      await api.post('/wait-until', {
+        waitUntil: '06:00',
+        tomorrow: true
+      });
+    }
+  } catch (error) {
+    console.error('Schedule build error:', error.message);
+    if (error.response) {
+      console.error('Response:', error.response.data);
+    }
+    process.exit(1);
+  }
+}
+
+buildSchedule();
+```
+
+## Advanced Features
+
+### Dynamic Decision Making
+
+Use peek-next to make decisions based on upcoming content:
+
+```javascript
+const nextItem = await api.post('/peek-next', { content: 'shows' });
+
+if (nextItem.data.duration < 30) {
+  // Short episode, play multiple
+  await api.post('/add-count', { content: 'shows', count: 3 });
+} else {
+  // Long episode, play one
+  await api.post('/add-count', { content: 'shows', count: 1 });
+}
+```
+
+### External Integration
+
+Query external APIs to influence scheduling:
+
+```javascript
+const weather = await axios.get('https://api.weather.com/...');
+
+if (weather.data.isRaining) {
+  await api.post('/collection', {
+    key: 'rainy-day',
+    collectionName: 'Indoor Activities',
+    playbackOrder: 'Shuffle'
+  });
+  await api.post('/add-all', { content: 'rainy-day' });
+} else {
+  await api.post('/add-all', { content: 'outdoor-shows' });
+}
+```
+
+### Date-Based Logic
+
+```javascript
+const now = new Date();
+const dayOfWeek = now.getDay();
+
+if (dayOfWeek === 0 || dayOfWeek === 6) {
+  // Weekend schedule
+  await api.post('/add-duration', {
+    content: 'weekend-movies',
+    duration: '12h'
+  });
+} else {
+  // Weekday schedule
+  await api.post('/add-count', { content: 'weekday-shows', count: 10 });
+}
+```
+
+## Configuration
+
+### Timeout
+
+Scripted schedules have a timeout to prevent runaway scripts (ErsatzTV.Core/Scheduling/ScriptedScheduling/ScriptedPlayoutBuilder.cs:32):
+
+<ParamField path="PlayoutScriptedScheduleTimeoutSeconds" type="int" default={30}>
+  Maximum seconds the script can run
+</ParamField>
+
+Configure in Settings > Advanced > Configuration.
+
+<Warning>
+  If your script exceeds the timeout, the build will fail. Optimize your script or increase the timeout if needed.
+</Warning>
+
+## Error Handling
+
+Your script should handle errors gracefully:
+
+```javascript
+try {
+  await api.post('/add-count', { content: 'invalid', count: 1 });
+} catch (error) {
+  console.error('Failed to add content:', error.message);
+  // Fall back to alternative content
+  await api.post('/add-count', { content: 'backup', count: 1 });
+}
+```
+
+If your script exits with a non-zero code, the schedule build fails and an error is logged.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Define All Content First">
+    Add all collections, playlists, etc. at the start of your script before using them in instructions.
+  </Accordion>
+  
+  <Accordion title="Use Loops for Repeating Schedules">
+    Create a main loop that builds one day's schedule, then loops back to create continuous programming.
+  </Accordion>
+  
+  <Accordion title="Handle Build Modes">
+    Check the `mode` argument and adjust behavior for reset vs. continue builds.
+  </Accordion>
+  
+  <Accordion title="Add Timeouts to External Calls">
+    When calling external APIs, use timeouts to prevent hanging.
+  </Accordion>
+  
+  <Accordion title="Log Debugging Info">
+    Use console.log() for debugging - output appears in ErsatzTV logs.
+  </Accordion>
+  
+  <Accordion title="Exit on Fatal Errors">
+    Use `process.exit(1)` when encountering unrecoverable errors.
+  </Accordion>
+</AccordionGroup>
+
+## Other Scripting Languages
+
+While the examples use JavaScript/Node.js, you can use any executable script:
+
+### Python Example
+
+```python
+#!/usr/bin/env python3
+import sys
+import requests
+
+base_url, build_id, mode = sys.argv[1:4]
+api_base = f"{base_url}/api/scheduling/scripted/{build_id}"
+
+requests.post(f"{api_base}/collection", json={
+    'key': 'shows',
+    'collectionName': 'TV Shows',
+    'playbackOrder': 'Chronological'
+})
+
+requests.post(f"{api_base}/add-all", json={'content': 'shows'})
+```
+
+### Bash Example
+
+```bash
+#!/bin/bash
+BASE_URL=$1
+BUILD_ID=$2
+MODE=$3
+
+API="${BASE_URL}/api/scheduling/scripted/${BUILD_ID}"
+
+curl -X POST "${API}/collection" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"shows","collectionName":"TV Shows","playbackOrder":"Chronological"}'
+
+curl -X POST "${API}/add-all" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"shows"}'
+```
+
+<Note>
+  Ensure your script file has execute permissions (`chmod +x script.js`).
+</Note>
+
+## Script Session Management
+
+Each schedule build gets a unique session managed by `IScriptedPlayoutBuilderService`. Sessions are automatically cleaned up after the build completes or times out.
+
+<Tip>
+  Multiple channels can use the same script file with different arguments to create variations of the same schedule logic.
+</Tip>

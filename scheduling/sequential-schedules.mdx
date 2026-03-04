@@ -1,0 +1,555 @@
+---
+title: Sequential Schedules
+description: YAML-defined schedules with precise instruction-based control
+---
+
+Sequential schedules use YAML files to define precise, instruction-based scheduling. This provides maximum control over content ordering, timing, and behavior while remaining human-readable and version-controllable.
+
+## Overview
+
+Sequential schedules are built by the `SequentialPlayoutBuilder` (ErsatzTV.Core/Scheduling/YamlScheduling/SequentialPlayoutBuilder.cs:18) and consist of:
+
+- **Content Definitions** - Collections, playlists, and other content sources
+- **Sequences** - Reusable instruction groups
+- **Playout Instructions** - The main schedule flow
+- **Reset Instructions** - Special instructions that run when resetting
+
+## YAML Structure
+
+A sequential schedule YAML file has this structure:
+
+```yaml
+import:
+  - shared-content.yaml
+  - common-sequences.yaml
+
+content:
+  - key: sitcoms
+    collection: Comedy Shows
+    order: shuffle
+  
+  - key: movies
+    collection: Action Movies
+    order: random
+
+sequence:
+  - key: primetime
+    items:
+      - count: { content: sitcoms, value: 2 }
+      - duration: { content: movies, value: 2h }
+
+reset:
+  - wait_until: { when: "06:00" }
+
+playout:
+  - wait_until: { when: "08:00" }
+  - sequence: { sequence: primetime }
+  - wait_until: { when: "06:00", tomorrow: true }
+  - repeat: { instructions: -2 }
+```
+
+## Content Definitions
+
+Content items define reusable content sources:
+
+### Collection Content
+
+```yaml
+content:
+  - key: my-shows
+    collection: TV Shows
+    order: chronological
+```
+
+<ParamField path="key" type="string" required>
+  Unique identifier for this content
+</ParamField>
+
+<ParamField path="collection" type="string" required>
+  Name of the collection
+</ParamField>
+
+<ParamField path="order" type="string" required>
+  Playback order: `chronological`, `random`, `shuffle`, `shuffle_in_order`, `multi_episode_shuffle`, `season_episode`, `random_rotation`, `marathon`
+</ParamField>
+
+### Multi-Collection Content
+
+```yaml
+content:
+  - key: all-comedy
+    multi_collection: Comedy Collections
+    order: shuffle
+```
+
+### Smart Collection Content
+
+```yaml
+content:
+  - key: recent-movies
+    smart_collection: New Releases
+    order: chronological
+```
+
+### Playlist Content
+
+```yaml
+content:
+  - key: weekend-playlist
+    playlist: Weekend Specials
+    playlist_group: Holidays
+```
+
+### Search Content
+
+```yaml
+content:
+  - key: star-trek
+    search: "title:*Star Trek*"
+    order: chronological
+```
+
+### Show Content
+
+```yaml
+content:
+  - key: specific-show
+    show:
+      tvdb: "12345"
+      imdb: "tt0123456"
+    order: season_episode
+```
+
+### Marathon Content
+
+```yaml
+content:
+  - key: trek-marathon
+    marathon:
+      searches:
+        - "title:*Star Trek*"
+      group_by: show
+      shuffle_groups: false
+      item_order: chronological
+      play_all: true
+```
+
+## Playout Instructions
+
+The main schedule is defined in the `playout` section:
+
+### Add All Items
+
+```yaml
+- all: { content: sitcoms }
+```
+
+Plays all items from the content source.
+
+### Add Count
+
+```yaml
+- count: { content: movies, value: 3 }
+```
+
+Plays a specific number of items.
+
+<ParamField path="content" type="string" required>
+  Content key to play from
+</ParamField>
+
+<ParamField path="value" type="int" required>
+  Number of items to play
+</ParamField>
+
+<ParamField path="custom_title" type="string">
+  Override EPG title
+</ParamField>
+
+<ParamField path="disable_watermarks" type="boolean" default={false}>
+  Disable watermarks for these items
+</ParamField>
+
+### Add Duration
+
+```yaml
+- duration:
+    content: shows
+    value: 2h30m
+    fallback: filler
+    trim: true
+    discard_attempts: 5
+    stop_before_end: false
+    offline_tail: false
+```
+
+Fills a specific duration with content.
+
+<ParamField path="content" type="string" required>
+  Content key to play from
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  Duration (e.g., "1h", "30m", "2h15m")
+</ParamField>
+
+<ParamField path="fallback" type="string">
+  Content key to use if main content won't fit
+</ParamField>
+
+<ParamField path="trim" type="boolean" default={false}>
+  Trim the last item to fit exactly
+</ParamField>
+
+<ParamField path="discard_attempts" type="int" default={0}>
+  How many items to try before giving up finding one that fits
+</ParamField>
+
+<ParamField path="stop_before_end" type="boolean" default={false}>
+  Stop before adding items that won't fit completely
+</ParamField>
+
+<ParamField path="offline_tail" type="boolean" default={false}>
+  Show offline screen for remaining time (requires `stop_before_end: true`)
+</ParamField>
+
+### Pad to Next
+
+```yaml
+- pad_to_next:
+    content: filler
+    minutes: 30
+```
+
+Pads to the next interval (e.g., next 30-minute mark).
+
+<ParamField path="minutes" type="int" required>
+  Interval in minutes (e.g., 30 pads to :00 and :30)
+</ParamField>
+
+### Pad Until
+
+```yaml
+- pad_until:
+    content: filler
+    when: "14:00"
+    tomorrow: false
+```
+
+Pads until a specific time of day.
+
+<ParamField path="when" type="string" required>
+  Time to pad until (HH:mm format)
+</ParamField>
+
+<ParamField path="tomorrow" type="boolean" default={false}>
+  If current time is past `when`, pad until tomorrow at that time
+</ParamField>
+
+## Control Instructions
+
+### Wait Until
+
+```yaml
+- wait_until:
+    when: "06:00"
+    tomorrow: false
+    rewind_on_reset: false
+```
+
+Waits until a specific time before continuing.
+
+<ParamField path="when" type="string" required>
+  Time to wait until (HH:mm format)
+</ParamField>
+
+<ParamField path="tomorrow" type="boolean" default={false}>
+  If current time is past `when`, wait until tomorrow
+</ParamField>
+
+<ParamField path="rewind_on_reset" type="boolean" default={false}>
+  When resetting, rewind to this time even if it's in the past
+</ParamField>
+
+### Repeat
+
+```yaml
+- repeat: { instructions: 5 }
+```
+
+Jumps back a number of instructions to create loops.
+
+<ParamField path="instructions" type="int" required>
+  Number of instructions to jump back (negative goes backward)
+</ParamField>
+
+<Warning>
+  Be careful with repeat instructions to avoid infinite loops. The system detects cycles in sequences but not in main playout instructions.
+</Warning>
+
+### Rewind
+
+```yaml
+- rewind: { content: shows, value: 5 }
+```
+
+Rewinds a content enumerator by a number of items.
+
+### Skip Items
+
+```yaml
+- skip_items: { content: shows, count: 3 }
+```
+
+Skips forward a number of items in a content enumerator.
+
+### Skip to Item
+
+```yaml
+- skip_to_item:
+    content: show
+    season: 2
+    episode: 5
+```
+
+Jumps to a specific season and episode.
+
+## Graphics and Watermarks
+
+### Graphics On
+
+```yaml
+- graphics_on:
+    elements:
+      - logo
+      - ticker
+    variables:
+      team: "Red Sox"
+      score: "5-3"
+```
+
+Enables graphics overlays.
+
+### Graphics Off
+
+```yaml
+- graphics_off:
+    elements:
+      - ticker
+```
+
+Disables graphics overlays. If no elements specified, disables all.
+
+### Watermark Control
+
+```yaml
+- watermark:
+    action: on
+    watermarks:
+      - channel-logo
+```
+
+<ParamField path="action" type="string" required>
+  `on` or `off`
+</ParamField>
+
+<ParamField path="watermarks" type="list">
+  Watermark names. If empty, affects all watermarks.
+</ParamField>
+
+## EPG Control
+
+### Lock Guide Group
+
+```yaml
+- epg_group:
+    action: lock
+    advance: true
+    custom_title: "Special Event"
+```
+
+Locks the EPG guide group for custom titles.
+
+### Unlock Guide Group
+
+```yaml
+- epg_group:
+    action: unlock
+```
+
+## Sequences
+
+Sequences are reusable instruction groups:
+
+```yaml
+sequence:
+  - key: morning-block
+    items:
+      - count: { content: news, value: 2 }
+      - duration: { content: talk-shows, value: 1h }
+      - pad_to_next: { content: filler, minutes: 30 }
+```
+
+Use sequences in playout:
+
+```yaml
+playout:
+  - wait_until: { when: "06:00" }
+  - sequence: { sequence: morning-block }
+```
+
+### Sequence Features
+
+<Tabs>
+  <Tab title="Repeat Sequences">
+    ```yaml
+    - sequence:
+        sequence: primetime
+        repeat: 2
+    ```
+    Repeats the sequence multiple times.
+  </Tab>
+  
+  <Tab title="Custom Title">
+    ```yaml
+    - sequence:
+        sequence: movie-block
+        custom_title: "Movie Marathon"
+    ```
+    Overrides EPG titles for all items in the sequence.
+  </Tab>
+  
+  <Tab title="Shuffle Sequence">
+    ```yaml
+    - shuffle_sequence: { sequence: variety-shows }
+    ```
+    Shuffles the order of instructions within the sequence each time it plays.
+  </Tab>
+</Tabs>
+
+## Imports
+
+Share common content and sequences across multiple schedule files:
+
+```yaml
+import:
+  - /path/to/shared-content.yaml
+  - ../common-sequences.yaml
+```
+
+Imported files can contain `content` and `sequence` sections. The `playout` and `reset` sections are ignored in imports.
+
+## Reset Instructions
+
+Special instructions that run only when the schedule is reset:
+
+```yaml
+reset:
+  - wait_until: { when: "06:00", rewind_on_reset: true }
+  - skip_to_item: { content: show, season: 1, episode: 1 }
+```
+
+Use reset instructions to:
+- Position the schedule at a specific time
+- Reset content enumerators to specific positions
+- Set initial graphics/watermark state
+
+## State Management
+
+Sequential schedules save state in the playout anchor (ErsatzTV.Core/Scheduling/YamlScheduling/SequentialPlayoutBuilder.cs:306):
+
+- Current instruction index
+- Current time
+- All enumerator states
+- Active graphics elements
+- Active watermarks
+- Guide group state
+
+## Pre-Roll and Filler
+
+```yaml
+- pre_roll:
+    action: on
+    content: commercials
+
+- count: { content: shows, value: 3 }
+
+- pre_roll: { action: off }
+```
+
+Pre-roll content plays automatically before each main content item.
+
+## Validation
+
+Sequential schedules are validated by `ISequentialScheduleValidator` before use:
+
+- YAML syntax checking
+- Instruction format validation
+- Content reference validation
+- Cycle detection in sequences
+- Import path verification
+
+## Example Complete Schedule
+
+```yaml
+import:
+  - shared-collections.yaml
+
+content:
+  - key: sitcoms
+    collection: Sitcoms
+    order: shuffle
+  
+  - key: dramas
+    collection: Dramas
+    order: chronological
+  
+  - key: movies
+    collection: Movies
+    order: random
+  
+  - key: commercials
+    playlist: Commercials
+    playlist_group: Ads
+
+sequence:
+  - key: evening-block
+    items:
+      - count: { content: sitcoms, value: 2 }
+      - duration: { content: dramas, value: 1h }
+  
+  - key: late-night
+    items:
+      - duration: { content: movies, value: 2h, trim: true }
+      - pad_to_next: { content: commercials, minutes: 30 }
+
+reset:
+  - wait_until: { when: "06:00", rewind_on_reset: true }
+
+playout:
+  # Morning
+  - wait_until: { when: "08:00" }
+  - pre_roll: { action: on, content: commercials }
+  - count: { content: sitcoms, value: 5 }
+  - pre_roll: { action: off }
+  
+  # Afternoon
+  - wait_until: { when: "14:00" }
+  - duration: { content: dramas, value: 4h, stop_before_end: true }
+  
+  # Evening
+  - wait_until: { when: "18:00" }
+  - sequence: { sequence: evening-block }
+  
+  # Late night
+  - wait_until: { when: "22:00" }
+  - sequence: { sequence: late-night }
+  
+  # Loop to next day
+  - wait_until: { when: "06:00", tomorrow: true }
+  - repeat: { instructions: -8 }
+```
+
+<Note>
+  Sequential schedules support up to 100 levels of sequence nesting. Beyond that, behavior is undefined to prevent infinite recursion.
+</Note>

@@ -1,0 +1,718 @@
+---
+title: Troubleshooting
+description: Common issues, solutions, and debugging techniques for ErsatzTV
+---
+
+This guide covers common issues, solutions for debugging streaming problems, and performance tuning tips.
+
+## Common Issues
+
+### Playback Issues
+
+<AccordionGroup>
+  <Accordion title="No Video / Black Screen">
+    **Symptoms:** Stream starts but shows black screen or loading forever
+    
+    **Solutions:**
+    
+    1. **Check FFmpeg profile compatibility**
+       - Go to **Settings** > **FFmpeg Profiles**
+       - Verify codec settings match your client capabilities
+       - Try switching to software encoding temporarily
+    
+    2. **Verify media file accessibility**
+       - Check Docker volume mounts are correct
+       - Ensure media files have read permissions
+       - Test with different media files
+    
+    3. **Check logs for errors**
+       ```bash
+       docker-compose logs -f ersatztv | grep -i error
+       ```
+    
+    4. **Hardware acceleration issues**
+       - Go to **Settings** > **Troubleshooting**
+       - Check **FFmpeg Capabilities** section
+       - Verify hardware encoders/decoders are detected
+  </Accordion>
+  
+  <Accordion title="Stuttering / Buffering">
+    **Symptoms:** Stream plays but constantly buffers or stutters
+    
+    **Possible causes:**
+    
+    1. **Transcoding too slow**
+       - Check logs for warnings: "transcoding speed is potentially insufficient"
+       - Logs include media item ID, channel number, and speed
+       
+       **Solutions:**
+       - Enable hardware acceleration
+       - Lower output resolution/bitrate
+       - Reduce normalized framerate
+       - Disable unnecessary features (deinterlacing, etc.)
+    
+    2. **Network issues**
+       - Test with local client (same network)
+       - Check network bandwidth
+       - Try lower bitrate profile
+    
+    3. **Disk I/O bottleneck**
+       - Use tmpfs for `/transcode` folder
+       - Check disk usage: `df -h`
+       - Monitor I/O: `iostat -x 1`
+  </Accordion>
+  
+  <Accordion title="Audio/Video Desync">
+    **Known issues and fixes:**
+    
+    **QSV (Intel Quick Sync):**
+    - Fixed in v26.3.0+ by using software decode for problematic content
+    - Uses heuristic to detect potentially problematic files
+    - Update to latest version
+    
+    **DTS Audio:**
+    - Fixed in v25.8.0+ for certain DTS-HD MA content when seeking
+    - Explicit audio decoder now properly set
+    
+    **AC3 Audio:**
+    - Fixed in v26.2.0+ when targeting stereo output with changing input layout
+    
+    **Solutions:**
+    1. Update to latest ErsatzTV version
+    2. Try software decoding (disable hardware in FFmpeg profile)
+    3. Use different audio codec in FFmpeg profile
+    4. Check source file with `ffprobe`
+  </Accordion>
+  
+  <Accordion title="Stream Won't Start">
+    **Symptoms:** 404 error, connection refused, or immediate failure
+    
+    **Check:**
+    
+    1. **Channel is enabled**
+       - Channels list shows enabled status
+       - Disabled channels return 404
+    
+    2. **Playout has content**
+       - View channel playout details
+       - Check for playout build failures (yellow warning)
+       - Click failed playout to see error details
+    
+    3. **Port accessibility**
+       ```bash
+       curl http://localhost:8409/iptv/channels.m3u
+       ```
+    
+    4. **Base URL configuration**
+       - If behind reverse proxy, verify `ETV_BASE_URL`
+       - Match proxy path configuration
+  </Accordion>
+</AccordionGroup>
+
+### Hardware Acceleration Issues
+
+<AccordionGroup>
+  <Accordion title="NVIDIA - Hardware Not Detected">
+    **Symptoms:** NVENC encoders not showing in FFmpeg capabilities
+    
+    **Solutions:**
+    
+    1. **Verify NVIDIA Docker runtime**
+       ```bash
+       docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+       ```
+       
+       Should show GPU information. If not:
+       ```bash
+       sudo apt-get install -y nvidia-docker2
+       sudo systemctl restart docker
+       ```
+    
+    2. **Check docker-compose configuration**
+       ```yaml
+       deploy:
+         resources:
+           reservations:
+             devices:
+               - driver: nvidia
+                 count: 1
+                 capabilities: [gpu]
+       ```
+    
+    3. **Verify driver version**
+       - NVIDIA driver 450+ required
+       - Update drivers: `sudo apt-get upgrade nvidia-driver-XXX`
+    
+    4. **Check ErsatzTV detection**
+       - As of v25.7.0+, ErsatzTV uses NvEnc API to detect capability
+       - Check troubleshooting page for detected encoders/decoders
+  </Accordion>
+  
+  <Accordion title="VAAPI - Green Padding / Green Artifacts">
+    **Known issue:** AMD VAAPI and some Intel drivers show green padding instead of black
+    
+    **Fixed in v26.2.0+** with Pad Mode option:
+    
+    1. Go to **Settings** > **FFmpeg Profiles**
+    2. Edit your profile
+    3. Set **Pad Mode** to **Software**
+    
+    This forces software padding, working around buggy GPU driver behavior (radeonsi or i965 drivers).
+    
+    **Other VAAPI fixes:**
+    - v26.2.0: Fix for AMD VAAPI green padding with h264 main profile
+    - v25.9.0: Fix for corrupt output (green artifacts) with AMD Polaris GPUs on 10-bit content
+  </Accordion>
+  
+  <Accordion title="QSV - Not Detected on Linux">
+    **Fixed in v25.8.0+** for non-drm displays (e.g., Wayland)
+    
+    **Verify device access:**
+    ```bash
+    ls -la /dev/dri/
+    ```
+    
+    **docker-compose.yml:**
+    ```yaml
+    devices:
+      - /dev/dri:/dev/dri
+    ```
+    
+    Make sure entire `/dev/dri` is mounted, not just `renderD128`.
+  </Accordion>
+  
+  <Accordion title="10-bit Content Issues">
+    **NVIDIA 10-bit h264:**
+    - Hardware decode unsupported until ffmpeg 8
+    - v26.3.0+ forces software decode of 10-bit h264
+    
+    **NVIDIA 10-bit output:**
+    - Fixed in v25.7.0+ when using graphics engine (watermarks, overlays)
+    - Fixed in v25.7.0+ for invalid video preset with 10-bit h264
+    
+    **Libplacebo tonemapping with NVIDIA:**
+    - Fixed in v25.7.0+ (green output issue resolved)
+  </Accordion>
+</AccordionGroup>
+
+### Scheduling & Playout Issues
+
+<AccordionGroup>
+  <Accordion title="Playout Build Failures">
+    **Symptoms:** Yellow warning in playouts table, no content scheduling
+    
+    **Added in v25.7.0:** Playout build status visible in UI
+    
+    **To diagnose:**
+    1. Go to **Playouts** list
+    2. Click on failed (yellow) playout
+    3. View warning/error details
+    
+    **Common causes:**
+    
+    - **Empty collection**: Schedule references collection with no items
+    - **Invalid schedule**: Syntax errors in sequential/scripted schedules
+    - **Missing filler**: Filler preset references non-existent collection
+    - **Time conflicts**: Fixed start times that can't be satisfied
+    
+    **Solutions:**
+    - Fix or remove problematic schedule items
+    - Verify collections have content
+    - Check filler preset configuration
+    - Review classic schedule for time conflicts
+  </Accordion>
+  
+  <Accordion title="Overlapping Playout Items">
+    **Fixed in v25.6.0+** for block schedules with "After Duration End" setting
+    
+    **Symptoms:** Items overlap in playout, causing playback issues
+    
+    **Check for overlaps:**
+    ```bash
+    docker-compose logs ersatztv | grep "overlapping"
+    ```
+    
+    **Note:** Existing overlapping items won't be auto-removed, but new ones won't be created. Wait for old items to age out or reset playout.
+  </Accordion>
+  
+  <Accordion title="Items Not Scheduling">
+    **Possible causes:**
+    
+    1. **Guide Mode set to Filler**
+       - Filler items may not appear in some contexts
+       - Check schedule item guide mode setting
+    
+    2. **Item duration too long**
+       - Block schedules skip items that don't fit
+       - Check block duration vs. media item duration
+    
+    3. **Playback order issues**
+       - Shuffle/random seed may cause unexpected behavior
+       - Check playback order and multiple count settings
+    
+    4. **Alternate schedule transition**
+       - Fixed in v25.5.0+ for edge cases skipping days
+       - Update to latest version
+  </Accordion>
+  
+  <Accordion title="Sequential/Scripted Schedule Timeout">
+    **Symptoms:** Playout build times out with large schedules
+    
+    **Workaround (v25.9.0+):**
+    - Fixed JSON schema validation limit (1000/hr was hit)
+    - Playout builds now use JsonSchema.Net (no limit)
+    
+    **Configure timeout:**
+    1. Go to **Settings** > **Playout**
+    2. Adjust **Scripted Schedule Timeout**
+    
+    **Optimize schedule:**
+    - Use `import` to reduce file size
+    - Break into smaller schedule files
+    - Use collections instead of inline content
+  </Accordion>
+</AccordionGroup>
+
+### Database Issues
+
+<AccordionGroup>
+  <Accordion title="Slow Startup / Database Initialization Stuck">
+    **Fixed in v25.5.0+:** Clear stale SQLite migration lock on startup
+    
+    **If still stuck:**
+    
+    1. **Stop ErsatzTV**
+       ```bash
+       docker-compose down
+       ```
+    
+    2. **Check for lock files**
+       ```bash
+       ls -la /path/to/config/*.lock
+       ```
+    
+    3. **Remove stale locks** (only if ErsatzTV is stopped)
+       ```bash
+       rm /path/to/config/ersatztv.db-lock
+       ```
+    
+    4. **Restart**
+       ```bash
+       docker-compose up -d
+       ```
+  </Accordion>
+  
+  <Accordion title="MySQL 'local_infile' Error">
+    **Fixed in v25.6.0+** with automatic configuration
+    
+    **If error persists:**
+    
+    MySQL requires `local_infile=ON` for bulk inserts during playout builds.
+    
+    **Option 1: Grant permission to ErsatzTV user**
+    ```sql
+    GRANT FILE ON *.* TO 'ersatztv_user'@'%';
+    FLUSH PRIVILEGES;
+    ```
+    
+    **Option 2: Enable globally in my.cnf**
+    ```ini
+    [mysqld]
+    local_infile=ON
+    ```
+    
+    Then restart MySQL.
+  </Accordion>
+  
+  <Accordion title="Slow Library Scans (Jellyfin)">
+    **Optimizations in v26.1.0+:**
+    - Only request People (actors, directors, writers) when etags don't match
+    - Significantly faster periodic scans, especially with Jellyfin 10.11.x
+    
+    **Performance tuning environment variables:**
+    ```yaml
+    environment:
+      ETV_JF_PAGE_SIZE: "10"         # Jellyfin API page size
+      ETV_JF_ENABLE_STATS: "1"       # Log timing info for scans
+      ETV_SLOW_DB_MS: "1000"         # Log slow queries
+    ```
+    
+    **Best practices:**
+    - Use quick scans by default (trust etags)
+    - Trigger deep scans manually when needed
+    - Enable stats to identify bottlenecks
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Tools
+
+### Playback Troubleshooting Tool
+
+**Added in v25.4.0:** Built-in playback troubleshooting
+
+**Access from:**
+- Media card overflow menu ("Troubleshoot Playback")
+- Channel list ("Troubleshoot" button) - v25.9.0+
+- Classic schedule list ("Troubleshoot" button) - v25.9.0+
+
+**Features:**
+- Test transcode specific media items
+- Select subtitle tracks
+- Seek to specific timestamps
+- View FFmpeg logs in real-time
+- Check playback speed (< 0.9x = red, 0.9-1.1x = yellow, > 1.1x = green)
+- Download 30-second media sample (v26.1.0+)
+
+**Usage:**
+
+1. Click "Troubleshoot Playback" on any media item
+2. Configure options:
+   - **FFmpeg Profile**: Test specific profile
+   - **Subtitle**: Select subtitle track (if any)
+   - **Seek Seconds**: Start at specific time
+   - **Stream Selector**: Test custom selector (v25.7.0+)
+3. Click "Start Troubleshooting"
+4. Monitor logs and playback speed
+
+<Note>
+Troubleshooting automatically forces streaming log level to Debug and restores it when complete.
+</Note>
+
+### Playout Troubleshooting
+
+**Added in v26.3.0:** Troubleshoot button on playout details
+
+**Shows information:**
+- **Classic schedules**: schedule, schedule item, scheduler, filler, playback order, random seed, collection index
+- **Block schedules**: block, block item, playback order, random seed, collection index
+
+Items with the same random seed are part of the same shuffle.
+
+### Block Playout Troubleshooting
+
+**Added in v25.8.0:** Investigate block playout history
+
+- Navigate to block playout details
+- View history for each block
+- Check which items were scheduled when
+- Verify deco application
+
+### Logging
+
+#### Log Locations
+
+**Docker:**
+```bash
+# Container logs
+docker-compose logs -f ersatztv
+
+# Persistent logs (in config volume)
+/config/logs/
+  ersatztv-*.log
+```
+
+**Bare metal:**
+```
+~/.local/state/ersatztv/logs/
+  ersatztv-*.log
+```
+
+#### Log Levels
+
+**Configure in Settings > General:**
+- **Information**: Standard logging (default)
+- **Debug**: Verbose logging, includes:
+  - API requests
+  - Slow database queries (if `ETV_SLOW_DB_MS` set)
+  - Slow API calls to Jellyfin (if `ETV_SLOW_API_MS` set)
+  - Detailed transcode info
+- **Warning**: Only warnings and errors
+
+**Streaming Log Level:**
+Separate setting for streaming/transcoding logs to reduce spam.
+
+#### Useful Log Searches
+
+```bash
+# Find errors
+docker-compose logs ersatztv | grep -i error
+
+# Transcoding warnings
+docker-compose logs ersatztv | grep "transcoding speed"
+
+# Hardware acceleration
+docker-compose logs ersatztv | grep -i "nvenc\|vaapi\|qsv"
+
+# Playout builds
+docker-compose logs ersatztv | grep "playout build"
+
+# Slow queries (requires ETV_SLOW_DB_MS)
+docker-compose logs ersatztv | grep "slow query"
+```
+
+### Health Checks
+
+**Available at Settings > Troubleshooting**
+
+**Health checks include:**
+
+- **Hardware acceleration**: Verify GPU detected and working
+- **FFmpeg compatibility**: Warn about missing filters (e.g., homebrew ffmpeg on macOS)
+- **Database**: Check for downgrades (v25.7.1+)
+- **Schedules**: Warn about empty schedules (v26.2.0+)
+- **Collections**: Validate collection references
+
+<Warning>
+The downgrade health check (v25.7.1+) warns when using an older version than previously used. Downgrades can cause database corruption and stability issues.
+</Warning>
+
+## Performance Tuning
+
+### Transcode Performance
+
+<AccordionGroup>
+  <Accordion title="Enable Hardware Acceleration">
+    **Biggest performance improvement**
+    
+    See the [Docker Setup guide](/guides/docker-setup) for hardware configuration.
+    
+    **Verify in Settings > Troubleshooting:**
+    - Check FFmpeg Capabilities
+    - Look for hardware encoders: `h264_nvenc`, `h264_vaapi`, `h264_qsv`
+    - Look for hardware decoders: `h264_cuvid`, `h264_vaapi`, `h264_qsv`
+  </Accordion>
+  
+  <Accordion title="Optimize FFmpeg Profile">
+    **Go to Settings > FFmpeg Profiles**
+    
+    **For better performance:**
+    
+    1. **Lower resolution**
+       - 1080p → 720p saves significant CPU/GPU
+    
+    2. **Lower bitrate**
+       - 8 Mbps → 4-6 Mbps still looks good
+    
+    3. **Disable normalization** (v26.2.0+)
+       - **Normalize Video**: Disable for stream copies (less stable)
+       - **Normalize Audio**: Disable for stream copies (less stable)
+       - **Normalize Colors**: Disable (performance benefit)
+       - ⚠️ These options may impact stream stability
+    
+    4. **Lower framerate**
+       - 60fps → 30fps
+       - Or match source framerate
+    
+    5. **Adjust GOP size**
+       - v26.3.0+: Lowered from 4s to 2s for HLS2 spec compliance
+       - Smaller GOP = more CPU but better seeking
+  </Accordion>
+  
+  <Accordion title="Use tmpfs for Transcode Folder">
+    **Dramatically improves I/O performance**
+    
+    ```yaml docker-compose.yml
+    tmpfs:
+      - /transcode
+    ```
+    
+    Stores temporary transcode files in RAM instead of disk.
+    
+    **Requirements:**
+    - Sufficient RAM (2-4GB free recommended)
+    - Not needed if using hardware acceleration
+  </Accordion>
+  
+  <Accordion title="Tune Video Codec Settings">
+    **Settings > FFmpeg Profiles**
+    
+    **H.264 Preset:**
+    - `faster` or `veryfast` for software encoding
+    - Preset doesn't affect hardware encoding performance much
+    
+    **CRF (Constant Rate Factor):**
+    - Not used by default (uses bitrate)
+    - Can experiment for quality/size balance
+  </Accordion>
+</AccordionGroup>
+
+### Database Performance
+
+<AccordionGroup>
+  <Accordion title="Use PostgreSQL or MySQL">
+    For very large libraries (10,000+ items), consider MySQL/MariaDB or PostgreSQL instead of SQLite.
+    
+    **Benefits:**
+    - Better concurrent access
+    - Faster complex queries
+    - Better for multiple instances
+    
+    **Configuration:**
+    ```yaml
+    environment:
+      ConnectionStrings__DatabaseConnection: |
+        Host=postgres;Database=ersatztv;Username=ersatztv;Password=yourpassword
+    ```
+  </Accordion>
+  
+  <Accordion title="Monitor Slow Queries">
+    **Enable slow query logging:**
+    
+    ```yaml
+    environment:
+      ETV_SLOW_DB_MS: "1000"  # Log queries taking >1 second
+    ```
+    
+    Then check logs:
+    ```bash
+    docker-compose logs ersatztv | grep "slow query"
+    ```
+    
+    Report slow queries to the ErsatzTV team for optimization.
+  </Accordion>
+</AccordionGroup>
+
+### Network Performance
+
+<AccordionGroup>
+  <Accordion title="Optimize Segment Duration">
+    HLS segment duration affects buffering and seeking.
+    
+    **Settings > FFmpeg**
+    - Shorter segments (2-4s): Better seeking, more overhead
+    - Longer segments (6-10s): Less overhead, slower seeking
+    
+    Default is usually optimal for most cases.
+  </Accordion>
+  
+  <Accordion title="Use Direct Play When Possible">
+    **HLS Direct mode** (experimental):
+    - Copies streams without transcoding
+    - Only works when source matches output exactly
+    - Much lower CPU usage
+    
+    **Limitations:**
+    - No transcoding means no format conversion
+    - May not work with all clients
+    - Fixed in v25.7.1+ to be accessible on separate streaming port
+  </Accordion>
+</AccordionGroup>
+
+## Free Space Validation
+
+**Added in v25.7.1:** ErsatzTV validates free space on startup
+
+**Requirements:**
+- Minimum 128 MB free in config folder
+- Minimum 128 MB free in transcode folder
+
+**If insufficient space:**
+- ErsatzTV will fail to start
+- Check logs for specific folder lacking space
+- Clean up old logs, database backups, or artwork cache
+
+## Known Issues & Workarounds
+
+### False Positives from Antivirus
+
+**Windows Defender** (fixed in v25.7.0+):
+- v25.7.0+: Uses code signing on all executables
+- v25.7.1+: Uses code signing on launcher (`ErsatzTV-Windows.exe`)
+- v25.7.0 briefly used different packaging to workaround issue
+
+If still flagged, report false positive to Microsoft.
+
+### Homebrew FFmpeg on macOS
+
+**Issue:** Default homebrew `ffmpeg` missing required filters
+
+**Health check added in v26.2.0** to detect this.
+
+**Solution:**
+```bash
+brew uninstall ffmpeg
+brew install ffmpeg-full
+# OR
+brew install ffmpeg@7
+```
+
+### Mirror Channel Issues
+
+**v26.1.0:** Fixed bug where random content played every ~40 seconds
+
+If experiencing mirror channel issues, update to v26.1.0+.
+
+### Green Line in Output (NVIDIA)
+
+**Fixed in v25.7.0+** for most cases with H264 output
+
+If still visible:
+1. Update to latest ErsatzTV
+2. Try HEVC output (if client supports)
+3. Report with sample media
+
+## Getting Help
+
+### Before Asking for Help
+
+1. **Check this troubleshooting guide**
+2. **Search existing discussions**: https://discuss.ersatztv.org
+3. **Check changelog** for recent fixes
+4. **Update to latest version**
+
+### Information to Provide
+
+<Steps>
+  <Step title="ErsatzTV Version">
+    Found in Settings > About or docker image tag
+  </Step>
+  <Step title="Relevant Logs">
+    Use docker-compose logs or files from `/config/logs/`
+  </Step>
+  <Step title="FFmpeg Profile">
+    Export FFmpeg profile JSON from Settings
+  </Step>
+  <Step title="Media Information">
+    Run `ffprobe` on problematic media:
+    ```bash
+    ffprobe -v quiet -print_format json -show_format -show_streams file.mkv
+    ```
+  </Step>
+  <Step title="Troubleshooting Tool Output">
+    Use built-in playback troubleshooting and share results
+  </Step>
+</Steps>
+
+### Where to Ask
+
+<CardGroup cols={2}>
+  <Card title="Community Forum" icon="comments" href="https://discuss.ersatztv.org">
+    Best for general questions and discussions
+  </Card>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/ErsatzTV/ErsatzTV/issues">
+    Report bugs with logs and reproduction steps
+  </Card>
+  <Card title="Contact Page" icon="envelope" href="https://ersatztv.org/contact">
+    Discord, Matrix, and other contact options
+  </Card>
+  <Card title="Feature Requests" icon="lightbulb" href="https://features.ersatztv.org">
+    Vote on and suggest new features
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Setup" icon="docker" href="/guides/docker-setup">
+    Optimize your Docker deployment
+  </Card>
+  <Card title="FFmpeg Configuration" icon="sliders" href="/configuration/ffmpeg">
+    Tune transcoding settings
+  </Card>
+  <Card title="Hardware Acceleration" icon="microchip" href="/configuration/hardware-acceleration">
+    Set up GPU transcoding
+  </Card>
+  <Card title="Changelog" icon="clock-rotate-left" href="https://github.com/ErsatzTV/ErsatzTV/blob/main/CHANGELOG.md">
+    View all fixes and improvements
+  </Card>
+</CardGroup>

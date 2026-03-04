@@ -1,0 +1,513 @@
+---
+title: 'HDHomeRun Emulation'
+description: 'HDHomeRun-compatible API endpoints'
+---
+
+## Overview
+
+ErsatzTV emulates HDHomeRun network tuner devices, allowing compatibility with apps and software that support the HDHomeRun protocol, including Plex Live TV, Emby Live TV, Channels DVR, and more.
+
+<Info>
+  HDHomeRun endpoints are always publicly accessible and do not require authentication, ensuring compatibility with all HDHomeRun clients.
+</Info>
+
+## Device Discovery
+
+Retrieve device information for HDHomeRun discovery.
+
+```bash
+GET /discover.json
+```
+
+### Response
+
+<ResponseField name="FriendlyName" type="string">
+  Human-readable device name
+</ResponseField>
+
+<ResponseField name="ModelNumber" type="string">
+  HDHomeRun model identifier
+</ResponseField>
+
+<ResponseField name="FirmwareName" type="string">
+  Firmware name
+</ResponseField>
+
+<ResponseField name="FirmwareVersion" type="string">
+  ErsatzTV version
+</ResponseField>
+
+<ResponseField name="DeviceID" type="string">
+  Unique device identifier
+</ResponseField>
+
+<ResponseField name="DeviceAuth" type="string">
+  Device authentication token
+</ResponseField>
+
+<ResponseField name="BaseURL" type="string">
+  Base URL for device API
+</ResponseField>
+
+<ResponseField name="LineupURL" type="string">
+  URL to channel lineup
+</ResponseField>
+
+<ResponseField name="TunerCount" type="integer">
+  Number of virtual tuners available
+</ResponseField>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/discover.json
+```
+
+### Example Response
+
+```json
+{
+  "FriendlyName": "ErsatzTV",
+  "ModelNumber": "HDHR3-CC",
+  "FirmwareName": "hdhomerun3_atsc",
+  "FirmwareVersion": "0.8.9-beta",
+  "DeviceID": "103E5C7B",
+  "DeviceAuth": "ersatztv",
+  "BaseURL": "http://localhost:8409",
+  "LineupURL": "http://localhost:8409/lineup.json",
+  "TunerCount": 3
+}
+```
+
+### Implementation Details
+
+From `ErsatzTV/Controllers/HdhrController.cs:22-28`:
+
+```csharp
+[HttpGet("discover.json")]
+[ResponseCache(NoStore = true)]
+public async Task<IActionResult> Discover()
+{
+    Guid uuid = await mediator.Send(new GetHDHRUUID());
+    int tunerCount = await mediator.Send(new GetHDHRTunerCount());
+    return new OkObjectResult(new Discover(Request.Scheme, Request.Host.ToString(), tunerCount, uuid));
+}
+```
+
+The UUID is generated from a stable identifier and persisted across restarts. Tuner count is configurable in ErsatzTV settings.
+
+## Device XML
+
+Retrieve device description in XML format for SSDP/UPnP discovery.
+
+```bash
+GET /device.xml
+```
+
+### Response
+
+Returns an XML device description compatible with HDHomeRun clients:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+    <friendlyName>ErsatzTV</friendlyName>
+    <manufacturer>Silicondust</manufacturer>
+    <modelName>HDHR3-CC</modelName>
+    <modelNumber>HDHR3-CC</modelNumber>
+    <serialNumber>103E5C7B</serialNumber>
+    <UDN>uuid:12345678-1234-1234-1234-1234567890ab</UDN>
+  </device>
+</root>
+```
+
+### Example Request
+
+```bash
+curl http://localhost:8409/device.xml
+```
+
+### Implementation Details
+
+From `HdhrController.cs:14-19`:
+
+```csharp
+[HttpGet("device.xml")]
+public async Task<IActionResult> DeviceXml()
+{
+    Guid uuid = await mediator.Send(new GetHDHRUUID());
+    return new OkObjectResult(new DeviceXml(Request.Scheme, Request.Host.ToString(), uuid));
+}
+```
+
+## Channel Lineup
+
+Retrieve the list of available channels in HDHomeRun format.
+
+```bash
+GET /lineup.json
+```
+
+### Response
+
+Returns an array of channel objects:
+
+<ResponseField name="GuideNumber" type="string">
+  Channel number as displayed in guides
+</ResponseField>
+
+<ResponseField name="GuideName" type="string">
+  Channel name
+</ResponseField>
+
+<ResponseField name="URL" type="string">
+  Streaming URL for the channel (MPEG-TS format)
+</ResponseField>
+
+<ResponseField name="HD" type="integer">
+  1 if HD quality, 0 otherwise
+</ResponseField>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/lineup.json
+```
+
+### Example Response
+
+```json
+[
+  {
+    "GuideNumber": "1",
+    "GuideName": "Movies 24/7",
+    "URL": "http://localhost:8409/iptv/hdhr/channel/1.ts",
+    "HD": 1
+  },
+  {
+    "GuideNumber": "2",
+    "GuideName": "Classic TV",
+    "URL": "http://localhost:8409/iptv/hdhr/channel/2.ts",
+    "HD": 1
+  },
+  {
+    "GuideNumber": "3",
+    "GuideName": "Music Videos",
+    "URL": "http://localhost:8409/iptv/hdhr/channel/3.ts",
+    "HD": 0
+  }
+]
+```
+
+### Implementation Details
+
+From `HdhrController.cs:34-36`:
+
+```csharp
+[HttpGet("lineup.json")]
+public Task<IActionResult> Lineup() =>
+    mediator.Send(new GetChannelLineup(Request.Scheme, Request.Host.ToString())).ToActionResult();
+```
+
+The lineup is dynamically generated from all enabled channels. The `HD` flag is determined based on channel resolution settings.
+
+## Lineup Status
+
+Retrieve the current lineup scanning status.
+
+```bash
+GET /lineup_status.json
+```
+
+### Response
+
+<ResponseField name="ScanInProgress" type="integer">
+  1 if scanning, 0 otherwise
+</ResponseField>
+
+<ResponseField name="ScanPossible" type="integer">
+  1 if scanning is possible, 0 otherwise
+</ResponseField>
+
+<ResponseField name="Source" type="string">
+  Source type (e.g., "Antenna", "Cable")
+</ResponseField>
+
+<ResponseField name="SourceList" type="array">
+  Available source types
+</ResponseField>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/lineup_status.json
+```
+
+### Example Response
+
+```json
+{
+  "ScanInProgress": 0,
+  "ScanPossible": 0,
+  "Source": "Cable",
+  "SourceList": ["Cable"]
+}
+```
+
+### Implementation Details
+
+From `HdhrController.cs:30-32`:
+
+```csharp
+[HttpGet("lineup_status.json")]
+public IActionResult LineupStatus() =>
+    new OkObjectResult(new LineupStatus());
+```
+
+ErsatzTV always returns a static status indicating no scan is in progress, as channels are managed through the web interface.
+
+## HDHomeRun Streaming
+
+Channels are streamed via MPEG-TS format through dedicated HDHomeRun endpoints.
+
+```bash
+GET /iptv/hdhr/channel/{channelNumber}.ts
+```
+
+### Path Parameters
+
+<ParamField path="channelNumber" type="string" required>
+  Channel number to stream
+</ParamField>
+
+### Response
+
+Returns a continuous MPEG-TS stream with `Content-Type: video/mp2t`.
+
+### Example Request
+
+```bash
+curl http://localhost:8409/iptv/hdhr/channel/1.ts
+```
+
+### Implementation Details
+
+From `IptvController.cs:70-81`:
+
+```csharp
+[HttpHead("iptv/hdhr/channel/{channelNumber}.ts")]
+[HttpGet("iptv/hdhr/channel/{channelNumber}.ts")]
+public Task<IActionResult> GetHDHRVideo(string channelNumber, [FromQuery] string mode = "ts")
+{
+    // don't redirect to the correct channel mode for HDHR clients; always use TS
+    if (mode != "ts" && mode != "ts-legacy")
+    {
+        mode = "ts";
+    }
+    
+    return GetTransportStreamVideo(channelNumber, mode);
+}
+```
+
+HDHomeRun clients always receive MPEG-TS streams, regardless of the channel's configured streaming mode. This ensures compatibility with all HDHomeRun-compatible applications.
+
+## Setting Up HDHomeRun Clients
+
+### Plex Live TV
+
+1. Navigate to **Settings** > **Live TV & DVR**
+2. Click **Set Up Plex DVR**
+3. Plex should auto-detect ErsatzTV as an HDHomeRun device
+4. Select the device and complete setup
+
+<Note>
+  If auto-detection fails, use the IP address `http://localhost:8409` (replace with your server address)
+</Note>
+
+### Emby Live TV
+
+1. Navigate to **Settings** > **Live TV**
+2. Click **Add** under Tuner Devices
+3. Select **HDHomeRun**
+4. Enter ErsatzTV server address: `http://localhost:8409`
+5. Complete the setup wizard
+
+### Jellyfin Live TV
+
+1. Navigate to **Dashboard** > **Live TV**
+2. Click **Add** under TV Sources
+3. Select **HDHomeRun**
+4. Enter the tuner URL: `http://localhost:8409`
+5. Complete configuration
+
+### Channels DVR
+
+1. Open Channels DVR settings
+2. Navigate to **TV Sources**
+3. Click **Add Source**
+4. Select **HDHomeRun**
+5. Enter the IP address of your ErsatzTV server
+6. Channels should detect the lineup automatically
+
+## Tuner Configuration
+
+Configure the number of virtual tuners:
+
+1. Navigate to **Settings** > **Playback** in ErsatzTV
+2. Set **HDHomeRun Tuner Count**
+3. Recommended: Set to the number of concurrent streams you want to support
+
+<Info>
+  Each "tuner" represents one concurrent stream. Set this based on your server's capacity and expected usage.
+</Info>
+
+## Discovery Protocols
+
+ErsatzTV supports multiple discovery methods:
+
+### HTTP Discovery
+
+Direct HTTP access to `discover.json` and `device.xml`.
+
+### SSDP/UPnP Discovery
+
+ErsatzTV broadcasts SSDP announcements for automatic discovery by compatible clients.
+
+<Note>
+  For SSDP discovery to work, ensure your firewall allows UDP traffic on port 1900.
+</Note>
+
+## Compatibility
+
+### Supported Clients
+
+| Client | Compatibility | Notes |
+|--------|---------------|-------|
+| Plex | ✅ Full | Includes DVR functionality |
+| Emby | ✅ Full | Includes DVR functionality |
+| Jellyfin | ✅ Full | Includes DVR functionality |
+| Channels DVR | ✅ Full | Premium features supported |
+| VLC | ✅ Full | Direct stream access |
+| Kodi | ✅ Full | Via PVR HDHomeRun addon |
+| Plex Client Apps | ✅ Full | iOS, Android, TV apps |
+| Emby Apps | ✅ Full | Mobile and TV apps |
+
+### Known Limitations
+
+- Some clients may not support channel logos
+- Recording functionality depends on client implementation
+- Fast channel switching may be limited by transcoding startup time
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Set Tuner Count" icon="sliders">
+    Configure tuner count based on expected concurrent streams
+  </Card>
+  
+  <Card title="Use TS Mode" icon="film">
+    Ensure channels use Transport Stream mode for best HDHomeRun compatibility
+  </Card>
+  
+  <Card title="Enable XMLTV" icon="list">
+    Provide EPG data for full guide functionality
+  </Card>
+  
+  <Card title="Test Discovery" icon="magnifying-glass">
+    Verify SSDP discovery works on your network
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Device Not Discovered
+
+If clients can't find the ErsatzTV device:
+
+1. Verify ErsatzTV is running and accessible
+2. Check firewall rules (allow port 8409 and UDP 1900)
+3. Manually add device using IP address
+4. Ensure client and server are on the same network
+5. Test with `curl http://YOUR_SERVER_IP:8409/discover.json`
+
+### Channels Not Appearing
+
+If channel lineup is empty:
+
+1. Verify channels are enabled in ErsatzTV
+2. Check that channels have valid schedules
+3. Review channel streaming mode settings
+4. Refresh lineup in client application
+
+### Streaming Fails
+
+If streams won't start:
+
+1. Test stream URL directly with VLC
+2. Check FFmpeg profile configuration
+3. Verify transport stream mode is enabled
+4. Review transcoding logs for errors
+5. Ensure sufficient system resources
+
+### Poor Performance
+
+If streams lag or buffer:
+
+1. Reduce concurrent stream count
+2. Lower bitrate in FFmpeg profiles
+3. Enable hardware acceleration
+4. Check network bandwidth
+5. Monitor server CPU and memory usage
+
+## Network Configuration
+
+### Port Requirements
+
+- **8409/TCP** - HTTP API and streaming (default, configurable)
+- **1900/UDP** - SSDP discovery
+
+### Firewall Rules
+
+Allow inbound traffic on:
+
+```bash
+# HTTP/streaming port
+sudo ufw allow 8409/tcp
+
+# SSDP discovery
+sudo ufw allow 1900/udp
+```
+
+### Docker Configuration
+
+For Docker deployments, expose ports:
+
+```yaml
+ports:
+  - "8409:8409"
+  - "1900:1900/udp"
+```
+
+## Related Endpoints
+
+- [IPTV Endpoints](/api/iptv) - M3U playlists and streaming
+- [XMLTV Guide](/api/xmltv) - EPG data for program guides
+- [Channels API](/api/channels) - Manage channels
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="XMLTV Guide" icon="list" href="/api/xmltv">
+    Add EPG data for complete guide functionality
+  </Card>
+  
+  <Card title="IPTV Endpoints" icon="film" href="/api/iptv">
+    Alternative streaming formats and playlists
+  </Card>
+</CardGroup>

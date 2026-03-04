@@ -1,0 +1,505 @@
+---
+title: 'Collections'
+description: 'Manage smart collections with the REST API'
+---
+
+## Overview
+
+Smart Collections are dynamic groups of media items defined by query expressions. Collections automatically update as your library changes, making them ideal for scheduling and organization.
+
+## Get All Smart Collections
+
+Retrieve a list of all smart collections.
+
+```bash
+GET /api/collections/smart
+```
+
+### Response
+
+<ResponseField name="collections" type="array">
+  Array of smart collection objects
+</ResponseField>
+
+<Expandable title="Smart Collection Object Properties">
+  <ResponseField name="id" type="integer" required>
+    Unique collection identifier
+  </ResponseField>
+  
+  <ResponseField name="name" type="string" required>
+    Display name of the collection
+  </ResponseField>
+  
+  <ResponseField name="query" type="string" required>
+    Query expression defining collection membership
+  </ResponseField>
+</Expandable>
+
+### Example Request
+
+```bash
+curl http://localhost:8409/api/collections/smart
+```
+
+### Example Response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Action Movies",
+    "query": "mediatype:movie AND genre:action"
+  },
+  {
+    "id": 2,
+    "name": "Classic TV",
+    "query": "mediatype:episode AND year:<2000"
+  },
+  {
+    "id": 3,
+    "name": "80s Music Videos",
+    "query": "mediatype:musicvideo AND year:1980..1989"
+  }
+]
+```
+
+## Create Smart Collection
+
+Create a new smart collection with a query expression.
+
+```bash
+POST /api/collections/smart/new
+```
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Display name for the collection
+</ParamField>
+
+<ParamField body="query" type="string" required>
+  Query expression to define collection membership
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="integer">
+  ID of the newly created collection
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:8409/api/collections/smart/new \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Sci-Fi Movies",
+    "query": "mediatype:movie AND genre:scifi"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "id": 15
+}
+```
+
+### Error Responses
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "query": ["The query field is required."]
+  }
+}
+```
+
+## Update Smart Collection
+
+Update an existing smart collection's name or query.
+
+```bash
+PUT /api/collections/smart/update
+```
+
+### Request Body
+
+<ParamField body="id" type="integer" required>
+  ID of the collection to update
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Updated display name
+</ParamField>
+
+<ParamField body="query" type="string" required>
+  Updated query expression
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="integer">
+  - `200 OK` - Collection updated successfully
+  - `400 Bad Request` - Invalid request
+  - `404 Not Found` - Collection does not exist
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X PUT http://localhost:8409/api/collections/smart/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": 15,
+    "name": "Modern Sci-Fi Movies",
+    "query": "mediatype:movie AND genre:scifi AND year:>2010"
+  }'
+```
+
+### Example Response
+
+```json
+{}
+```
+
+<Note>
+  Updating a collection's query immediately affects which media items are members. Active schedules using the collection will reflect changes on the next playout rebuild.
+</Note>
+
+## Delete Smart Collection
+
+Delete a smart collection.
+
+```bash
+DELETE /api/collections/smart/delete/{id}
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  ID of the collection to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="integer">
+  - `200 OK` - Collection deleted successfully
+  - `404 Not Found` - Collection does not exist
+  - `409 Conflict` - Collection is in use by a schedule
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X DELETE http://localhost:8409/api/collections/smart/delete/15
+```
+
+<Warning>
+  Collections used in active channel schedules cannot be deleted. Remove the collection from schedules first.
+</Warning>
+
+## Implementation Details
+
+From `ErsatzTV/Controllers/Api/SmartCollectionController.cs:14-42`:
+
+```csharp
+[HttpGet("/api/collections/smart", Name="GetSmartCollections")]
+public async Task<List<SmartCollectionResponseModel>> GetAll() =>
+    await mediator.Send(new GetAllSmartCollectionsForApi());
+
+[HttpPost("/api/collections/smart/new", Name = "CreateSmartCollection")]
+public async Task<IActionResult> AddOne(
+    [Required] [FromBody] CreateSmartCollection request)
+{
+    Either<BaseError, CreateSmartCollectionResult> result =
+        await mediator.Send(request).MapT(r => new CreateSmartCollectionResult(r.Id));
+    return result.Match<IActionResult>(Ok, error => Problem(error.ToString()));
+}
+
+[HttpPut("/api/collections/smart/update", Name="UpdateSmartCollection")]
+public async Task<IActionResult> UpdateOne(
+    [Required] [FromBody] UpdateSmartCollection request)
+{
+    Either<BaseError, UpdateSmartCollectionResult> result = await mediator.Send(request);
+    return result.Match<IActionResult>(Ok, error => Problem(error.ToString()));
+}
+
+[HttpDelete("/api/collections/smart/delete/{id:int}", Name="DeleteSmartCollection")]
+public async Task<IActionResult> DeleteSmartCollection(int id)
+{
+    Either<BaseError, Unit> result = await mediator.Send(new DeleteSmartCollection(id));
+    return result.Match<IActionResult>(_ => Ok(), error => Problem(error.ToString()));
+}
+```
+
+## Query Language
+
+Smart collections use a powerful query language to define membership.
+
+### Basic Syntax
+
+```
+field:value
+```
+
+### Fields
+
+<CardGroup cols={2}>
+  <Card title="mediatype" icon="film">
+    Media type: `movie`, `episode`, `musicvideo`, `song`, `image`, `othervideo`
+  </Card>
+  
+  <Card title="title" icon="heading">
+    Media title (use quotes for multi-word: `title:"Star Wars"`)
+  </Card>
+  
+  <Card title="year" icon="calendar">
+    Release or air year (supports ranges: `year:2010..2020`)
+  </Card>
+  
+  <Card title="genre" icon="masks-theater">
+    Genre tag (e.g., `genre:action`, `genre:comedy`)
+  </Card>
+  
+  <Card title="season" icon="list-ol">
+    Season number for TV episodes
+  </Card>
+  
+  <Card title="episode" icon="hashtag">
+    Episode number for TV episodes
+  </Card>
+  
+  <Card title="artist" icon="user">
+    Artist name for music videos and songs
+  </Card>
+  
+  <Card title="album" icon="compact-disc">
+    Album name for music videos and songs
+  </Card>
+</CardGroup>
+
+### Logical Operators
+
+```
+field1:value1 AND field2:value2
+field1:value1 OR field2:value2
+NOT field:value
+```
+
+### Comparison Operators
+
+```
+year:>2000          # Greater than
+year:<2000          # Less than
+year:>=2000         # Greater than or equal
+year:<=2000         # Less than or equal
+year:2010..2020     # Range (inclusive)
+```
+
+### Example Queries
+
+<Accordion title="Action movies from 2010s">
+  ```
+  mediatype:movie AND genre:action AND year:2010..2019
+  ```
+</Accordion>
+
+<Accordion title="Breaking Bad season 1">
+  ```
+  title:"Breaking Bad" AND season:1
+  ```
+</Accordion>
+
+<Accordion title="80s and 90s music videos">
+  ```
+  mediatype:musicvideo AND (year:1980..1989 OR year:1990..1999)
+  ```
+</Accordion>
+
+<Accordion title="Movies excluding horror">
+  ```
+  mediatype:movie AND NOT genre:horror
+  ```
+</Accordion>
+
+<Accordion title="Short films under 90 minutes">
+  ```
+  mediatype:movie AND runtime:<90
+  ```
+</Accordion>
+
+<Info>
+  Queries are case-insensitive. Use quotes for values containing spaces.
+</Info>
+
+## Collection Types
+
+ErsatzTV supports multiple collection types:
+
+### Smart Collections
+
+Dynamic collections defined by queries (documented on this page).
+
+### Multi Collections
+
+Collections that combine multiple other collections.
+
+### Trakt Lists
+
+Collections synced from Trakt.tv lists.
+
+<Note>
+  Only Smart Collections are currently manageable via the REST API. Other collection types are managed through the web UI.
+</Note>
+
+## Using Collections in Schedules
+
+Collections are the primary way to schedule content:
+
+1. Create a smart collection with desired content
+2. Navigate to a channel's schedule
+3. Add the collection as a schedule item
+4. Configure playback order and options
+
+### Playback Orders
+
+- **Chronological** - By release date or air date
+- **Random** - Randomized selection
+- **Shuffle** - Shuffled order
+- **Alphabetical** - By title
+- **Sequential** - As ordered in collection
+
+## Dynamic Updates
+
+Smart collections automatically update when:
+
+- New media is scanned that matches the query
+- Media metadata changes
+- Media is deleted or moved to trash
+- The collection query is updated
+
+No manual refresh is required.
+
+<Note>
+  Schedules using collections may need playout rebuilds to reflect collection changes:
+  ```bash
+  POST /api/channels/{channelNumber}/playout/reset
+  ```
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Specific Queries" icon="crosshairs">
+    Use specific queries to avoid unintended matches
+  </Card>
+  
+  <Card title="Test Before Use" icon="vial">
+    Preview collection contents in the web UI before scheduling
+  </Card>
+  
+  <Card title="Descriptive Names" icon="tag">
+    Use clear names that describe the collection's content
+  </Card>
+  
+  <Card title="Avoid Empty Collections" icon="inbox">
+    Ensure queries match existing media before scheduling
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Collection Is Empty
+
+If a collection has no items:
+
+1. Verify the query syntax is correct
+2. Check that matching media exists in your libraries
+3. Ensure media has been scanned and indexed
+4. Test query components individually
+
+### Collection Not Updating
+
+If collection doesn't reflect library changes:
+
+1. Trigger a library scan: `POST /api/libraries/{id}/scan`
+2. Check that media metadata matches query criteria
+3. Verify collection query hasn't changed
+
+### Cannot Delete Collection
+
+If deletion fails with 409 Conflict:
+
+1. Check which schedules use the collection
+2. Remove collection from those schedules
+3. Retry deletion
+
+## Automation Examples
+
+### Create Monthly Collection (Python)
+
+```python
+import requests
+from datetime import datetime
+
+def create_monthly_collection():
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
+    collection = {
+        "name": f"New Releases {current_year}-{current_month:02d}",
+        "query": f"mediatype:movie AND year:{current_year} AND month:{current_month}"
+    }
+    
+    response = requests.post(
+        "http://localhost:8409/api/collections/smart/new",
+        json=collection
+    )
+    
+    if response.status_code == 200:
+        print(f"Created collection: {collection['name']}")
+        return response.json()["id"]
+    else:
+        print(f"Error: {response.text}")
+        return None
+```
+
+### Update Collection Query (Bash)
+
+```bash
+#!/bin/bash
+
+COLLECTION_ID=15
+NEW_QUERY="mediatype:movie AND genre:action AND year:>2015"
+
+curl -X PUT http://localhost:8409/api/collections/smart/update \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"id\": $COLLECTION_ID,
+    \"name\": \"Modern Action Movies\",
+    \"query\": \"$NEW_QUERY\"
+  }"
+```
+
+## Related Endpoints
+
+- [Media Items API](/api/media-items) - Query individual media items
+- [Schedules API](/api/schedules) - Add collections to channel schedules
+- [Libraries API](/api/libraries) - Scan libraries to populate collections
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Schedules" icon="calendar" href="/api/schedules">
+    Add collections to channel schedules
+  </Card>
+  
+  <Card title="Media Items" icon="film" href="/api/media-items">
+    Understand media item properties used in queries
+  </Card>
+</CardGroup>

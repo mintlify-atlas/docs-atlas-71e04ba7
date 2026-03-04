@@ -1,0 +1,520 @@
+---
+title: Filler Content
+description: Automatically fill gaps in programming with configurable filler presets
+icon: film
+---
+
+Filler content automatically fills gaps in channel schedules, preventing dead air and maintaining continuous streaming. ErsatzTV provides flexible filler presets with multiple modes and timing options.
+
+## Filler Kinds
+
+Different types of filler serve different purposes, defined in the `FillerKind` enum:
+
+```csharp
+public enum FillerKind
+{
+    None = 0,
+    PreRoll = 1,
+    MidRoll = 2,
+    PostRoll = 3,
+    Tail = 4,
+    Fallback = 5,
+    GuideMode = 99,
+    DecoDefault = 100
+}
+```
+
+Reference: `FillerKind.cs:3-15`
+
+### None
+
+No filler - gaps remain empty.
+
+### PreRoll
+
+Plays before main content:
+
+- Bumpers
+- Channel identifications
+- Promotional content
+- Advertisements
+
+### MidRoll
+
+Inserted during content at chapter points:
+
+- Commercial breaks
+- Station identifications
+- Promotional spots
+
+See [Mid-Roll Filler](#mid-roll-filler) for chapter-based insertion.
+
+### PostRoll
+
+Plays after main content:
+
+- Credits filler
+- "Next up" promotions
+- End-of-show bumpers
+
+### Tail
+
+Fills remaining time to reach schedule slot duration:
+
+- Short-form content to pad schedule
+- Adjusts to available time
+- Prevents schedule drift
+
+### Fallback
+
+Plays when no content is scheduled:
+
+- Offline loop content
+- Technical difficulty slate
+- Default channel content
+
+### DecoDefault
+
+Default filler from Deco group configuration:
+
+```csharp
+public DecoMode DefaultFillerMode { get; set; }
+public CollectionType DefaultFillerCollectionType { get; set; }
+public int? DefaultFillerCollectionId { get; set; }
+public bool DefaultFillerTrimToFit { get; set; }
+```
+
+Reference: `Deco.cs:24-34`
+
+## Filler Presets
+
+Filler presets define what content to play and how:
+
+```csharp
+public class FillerPreset
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public FillerKind FillerKind { get; set; }
+    public FillerMode FillerMode { get; set; }
+    public TimeSpan? Duration { get; set; }
+    public int? Count { get; set; }
+    public int? PadToNearestMinute { get; set; }
+    public bool AllowWatermarks { get; set; }
+    public CollectionType CollectionType { get; set; }
+    public string Expression { get; set; }
+    public bool UseChaptersAsMediaItems { get; set; }
+    // Collection references...
+}
+```
+
+Reference: `FillerPreset.cs:3-26`
+
+### Filler Modes
+
+Control how much filler content plays:
+
+```csharp
+public enum FillerMode
+{
+    None = 0,
+    Duration = 1,
+    Count = 2,
+    Pad = 3,
+    RandomCount = 4
+}
+```
+
+Reference: `FillerMode.cs:3-10`
+
+#### None Mode
+
+No filler inserted (placeholder preset).
+
+#### Duration Mode
+
+Fill a specific duration:
+
+```yaml
+filler_mode: Duration
+duration: "00:02:30"  # 2 minutes 30 seconds
+```
+
+Plays filler content for exactly the specified duration.
+
+#### Count Mode
+
+Play a specific number of items:
+
+```yaml
+filler_mode: Count
+count: 3
+```
+
+Plays exactly 3 items from the filler collection, regardless of duration.
+
+#### Pad Mode
+
+Fill to nearest minute boundary:
+
+```yaml
+filler_mode: Pad
+pad_to_nearest_minute: 5
+```
+
+Adds filler to round schedule to nearest 5-minute mark (or other specified interval).
+
+#### RandomCount Mode
+
+Play a random number of items:
+
+```yaml
+filler_mode: RandomCount
+count: 5  # Up to 5 items
+```
+
+Randomly selects between 1 and the specified count.
+
+### Content Sources
+
+Filler presets can pull from various collection types:
+
+```csharp
+public enum CollectionType
+{
+    Collection = 0,
+    TelevisionShow = 1,
+    TelevisionSeason = 2,
+    Artist = 3,
+    MultiCollection = 4,
+    SmartCollection = 5,
+    Playlist = 6,
+    // ...
+}
+```
+
+Reference: `CollectionType.cs:3-26`
+
+**Configuration:**
+
+```yaml
+collection_type: Collection
+collection_id: 42
+```
+
+or
+
+```yaml
+collection_type: Playlist
+playlist_id: 15
+```
+
+or
+
+```yaml
+collection_type: SmartCollection
+smart_collection_id: 8
+```
+
+Reference: `FillerPreset.cs:13-23`
+
+### Watermark Behavior
+
+Control whether watermarks display during filler:
+
+```yaml
+allow_watermarks: true
+```
+
+- `true` - Channel watermarks display during filler
+- `false` - Watermarks hidden during filler content
+
+Reference: `FillerPreset.cs:12`, `Deco.cs:15`
+
+<Note>
+Deco groups also have `UseWatermarkDuringFiller` setting that interacts with preset configuration.
+</Note>
+
+## Mid-Roll Filler
+
+Advanced filler insertion at chapter points using expressions:
+
+### Filler Expressions
+
+Filter chapter points for mid-roll insertion using mathematical expressions:
+
+```yaml
+filler_kind: MidRoll
+expression: "num % 2 == 0"  # Every other chapter
+```
+
+Reference: `FillerExpression.cs:6-78`
+
+### Expression Variables
+
+Available variables in filler expressions:
+
+- `num` - Chapter number (1-based)
+- `point` - Chapter end time in seconds
+- `title` - Chapter title (if available)
+- `total_points` - Total number of chapter points
+- `total_duration` - Total content duration in seconds
+- `total_progress` - Progress through content (0.0-1.0)
+- `remaining_duration` - Seconds remaining after this point
+- `last_mid_filler` - Seconds since last mid-roll insertion
+- `matched_points` - Number of previously matched points
+
+Reference: `FillerExpression.cs:37-51`
+
+### Expression Examples
+
+#### Every 15 Minutes
+
+```yaml
+expression: "last_mid_filler >= 900"  # 900 seconds = 15 minutes
+```
+
+#### Skip First and Last
+
+```yaml
+expression: "num > 1 && num < total_points"
+```
+
+#### Title-Based
+
+```yaml
+expression: "title == 'Commercial Break'"
+```
+
+#### Progress-Based
+
+```yaml
+expression: "total_progress >= 0.25 && total_progress <= 0.75"
+```
+
+#### Minimum Remaining Duration
+
+```yaml
+expression: "remaining_duration >= 600"  # At least 10 minutes remaining
+```
+
+#### Limited Insertions
+
+```yaml
+expression: "matched_points < 3 && last_mid_filler >= 600"
+```
+
+Plays maximum of 3 mid-rolls, at least 10 minutes apart.
+
+### Chapter-Based Items
+
+Use individual chapters as filler items:
+
+```yaml
+use_chapters_as_media_items: true
+```
+
+When enabled:
+- Each chapter becomes a separate filler item
+- Useful for episodic content split into segments
+- Works with Count and RandomCount modes
+
+Reference: `FillerPreset.cs:25`
+
+## Fallback Filler
+
+Fallback content plays when schedule has gaps:
+
+### Channel Fallback
+
+Set at channel level:
+
+```yaml
+channel:
+  number: "1"
+  fallback_filler_preset_id: 5
+```
+
+Reference: Database migration `Add_ChannelFallbackFiller`
+
+### Deco Fallback
+
+Deco groups define dead air fallback:
+
+```csharp
+public DecoMode DeadAirFallbackMode { get; set; }
+public CollectionType DeadAirFallbackCollectionType { get; set; }
+public int? DeadAirFallbackCollectionId { get; set; }
+// Collection references...
+```
+
+Reference: `Deco.cs:37-46`
+
+## Scheduling Integration
+
+Filler integrates with schedule items:
+
+### Program Schedule Items
+
+Attach filler presets to schedule templates:
+
+```yaml
+program_schedule_item:
+  start_time: "20:00"
+  pre_roll_filler_id: 1
+  mid_roll_filler_id: 2
+  post_roll_filler_id: 3
+  tail_filler_id: 4
+```
+
+Reference: `ProgramScheduleItem.TailFiller` migrations
+
+### Playout Items
+
+Dynamic filler assignment during playout building:
+
+```csharp
+public FillerKind FillerKind { get; set; }
+```
+
+Reference: `PlayoutItem.FillerKind` migrations
+
+## Trimming Behavior
+
+Control what happens when filler is too long:
+
+```yaml
+default_filler_trim_to_fit: true
+```
+
+- `true` - Trim filler content to fit available duration
+- `false` - Play full filler, potentially overrunning schedule
+
+Reference: `Deco.cs:34`
+
+## Filler Strategies
+
+### Commercial Break Strategy
+
+```yaml
+name: "Standard Commercials"
+filler_kind: MidRoll
+filler_mode: Duration
+duration: "00:02:00"
+collection_type: Collection
+collection_id: 10  # Commercials collection
+allow_watermarks: false
+expression: "last_mid_filler >= 900"  # Every 15 minutes
+```
+
+### Bumper Strategy
+
+```yaml
+name: "Show Bumpers"
+filler_kind: PreRoll
+filler_mode: Count
+count: 1
+collection_type: SmartCollection
+smart_collection_id: 5
+allow_watermarks: true
+```
+
+### Tail Padding Strategy
+
+```yaml
+name: "Short Form Padding"
+filler_kind: Tail
+filler_mode: Pad
+pad_to_nearest_minute: 5
+collection_type: MultiCollection
+multi_collection_id: 3  # Short clips
+allow_watermarks: true
+```
+
+### Offline Loop Strategy
+
+```yaml
+name: "Technical Difficulties"
+filler_kind: Fallback
+filler_mode: Duration
+duration: "01:00:00"  # Loop for 1 hour
+collection_type: Playlist
+playlist_id: 99
+allow_watermarks: true
+```
+
+## Filler Scheduling
+
+Filler content is scheduled by the playout builder:
+
+```csharp
+public class BlockPlayoutFillerBuilder
+{
+    // Builds filler segments for block schedules
+}
+```
+
+Reference: `BlockPlayoutFillerBuilder.cs:12`
+
+### Playout Building Process
+
+1. **Schedule Analysis** - Identify gaps and filler points
+2. **Preset Selection** - Choose appropriate filler preset
+3. **Content Selection** - Pick items from filler collection
+4. **Duration Calculation** - Trim or pad as configured
+5. **Playout Integration** - Insert filler into timeline
+
+## Best Practices
+
+### Content Organization
+
+Organize filler by type:
+
+- **Bumpers** - Short (5-15 second) station IDs
+- **Commercials** - 15-60 second spots
+- **Promos** - 30-90 second show promotions
+- **Short-form** - 1-10 minute content for tail filler
+- **Fallback** - Long-form loopable content
+
+### Expression Design
+
+**Keep expressions simple:**
+```yaml
+expression: "last_mid_filler >= 900"  # Good
+```
+
+**Avoid overly complex logic:**
+```yaml
+# Harder to maintain
+expression: "(num % 3 == 0 && total_progress > 0.2) || (matched_points < 2 && last_mid_filler >= 600 && remaining_duration >= 300)"
+```
+
+### Watermark Consistency
+
+Decide on watermark policy:
+
+- **Always visible** - Set `allow_watermarks: true` on all filler
+- **Content only** - Set `allow_watermarks: false` for commercials
+- **Consistent branding** - Match filler watermark to channel policy
+
+### Duration Planning
+
+Plan filler durations:
+
+- **PreRoll** - 15-30 seconds typical
+- **MidRoll** - 2-3 minutes for commercial breaks
+- **PostRoll** - 15-30 seconds
+- **Tail** - Variable, use Pad mode
+- **Fallback** - Long duration for extended loops
+
+<Tip>
+Use Smart Collections for dynamic filler that automatically updates as you add new content.
+</Tip>
+
+<Note>
+Mid-roll filler requires media files with chapter markers. Use FFmpeg to add chapters or use files that already contain them.
+</Note>
+
+<Warning>
+Filler expressions are evaluated for each chapter point. Complex expressions on content with many chapters may impact performance.
+</Warning>

@@ -1,0 +1,270 @@
+---
+title: FFmpeg Profiles
+description: Configure FFmpeg profiles for video transcoding and streaming
+---
+
+FFmpeg profiles control how ErsatzTV transcodes and streams media content. Each profile defines video and audio encoding settings, hardware acceleration options, and output quality parameters.
+
+## Overview
+
+FFmpeg profiles are used throughout ErsatzTV to:
+
+- Transcode media to a consistent format for streaming
+- Enable hardware acceleration for improved performance
+- Control video and audio quality
+- Normalize audio and video properties across different source files
+
+## Profile Configuration
+
+### Basic Settings
+
+<ParamField path="Name" type="string" required>
+  A descriptive name for the profile
+</ParamField>
+
+<ParamField path="ThreadCount" type="integer" default="0">
+  Number of FFmpeg threads to use. Set to `0` for automatic detection.
+</ParamField>
+
+<ParamField path="NormalizeAudio" type="boolean" default="true">
+  Normalize audio properties across all media items
+</ParamField>
+
+<ParamField path="NormalizeVideo" type="boolean" default="true">
+  Normalize video properties across all media items
+</ParamField>
+
+<ParamField path="NormalizeColors" type="boolean" default="true">
+  Normalize color space to BT.709 for consistent color reproduction
+</ParamField>
+
+<ParamField path="NormalizeFramerate" type="boolean" default="false">
+  Normalize framerate across all media items
+</ParamField>
+
+<ParamField path="DeinterlaceVideo" type="boolean" default="true">
+  Automatically deinterlace interlaced video content
+</ParamField>
+
+### Resolution and Scaling
+
+<ParamField path="Resolution" type="Resolution" required>
+  Target output resolution (e.g., 1920x1080, 1280x720)
+</ParamField>
+
+<ParamField path="ScalingBehavior" type="enum">
+  How to handle aspect ratio differences:
+  - `ScaleAndPad` - Scale to fit and add letterboxing/pillarboxing
+  - `Stretch` - Stretch to fill the entire frame
+  - `Crop` - Crop to fill without distortion
+</ParamField>
+
+<ParamField path="PadMode" type="enum">
+  Padding filter mode:
+  - `Software` - Use software-based padding
+  - `Hardware` - Use hardware-based padding (VAAPI only)
+  - `HardwareIfPossible` - Use hardware padding if available
+</ParamField>
+
+### Video Settings
+
+<ParamField path="VideoFormat" type="enum" required>
+  Video codec to use for encoding:
+  - `H264` - H.264/AVC (most compatible)
+  - `Hevc` - H.265/HEVC (better compression)
+  - `Mpeg2Video` - MPEG-2 (legacy compatibility)
+  - `Av1` - AV1 (newest, best compression)
+  - `Copy` - Copy video stream without re-encoding
+</ParamField>
+
+<ParamField path="VideoProfile" type="string" default="high">
+  Video codec profile (H.264 only). Common values:
+  - `baseline`
+  - `main`
+  - `high`
+  - `high444p` (10-bit NVENC)
+</ParamField>
+
+<ParamField path="VideoPreset" type="string" default="Unset">
+  Encoding speed/quality preset. Available presets vary by codec and hardware acceleration.
+</ParamField>
+
+<ParamField path="VideoBitrate" type="integer" default="2000">
+  Target video bitrate in Kbps
+</ParamField>
+
+<ParamField path="VideoBufferSize" type="integer" default="4000">
+  Video buffer size in Kbps (typically 2x video bitrate)
+</ParamField>
+
+<ParamField path="BitDepth" type="enum" default="EightBit">
+  Video bit depth:
+  - `EightBit` - 8-bit color depth (most compatible)
+  - `TenBit` - 10-bit color depth (better quality, HDR support)
+</ParamField>
+
+<ParamField path="AllowBFrames" type="boolean" default="false">
+  Allow B-frames in video encoding. May cause playback issues with some clients.
+</ParamField>
+
+<ParamField path="TonemapAlgorithm" type="enum" default="Linear">
+  Algorithm for HDR to SDR tone mapping:
+  - `Linear`
+  - `Clip`
+  - `Gamma`
+  - `Reinhard`
+  - `Mobius`
+  - `Hable`
+</ParamField>
+
+### Audio Settings
+
+<ParamField path="AudioFormat" type="enum" required>
+  Audio codec to use for encoding:
+  - `Aac` - AAC (most compatible)
+  - `Ac3` - Dolby Digital/AC-3
+  - `AacLatm` - AAC-LATM for HLS
+  - `Copy` - Copy audio stream without re-encoding
+</ParamField>
+
+<ParamField path="AudioBitrate" type="integer" default="192">
+  Target audio bitrate in Kbps
+</ParamField>
+
+<ParamField path="AudioBufferSize" type="integer" default="384">
+  Audio buffer size in Kbps (typically 2x audio bitrate)
+</ParamField>
+
+<ParamField path="AudioChannels" type="integer" default="2">
+  Number of output audio channels. Common values:
+  - `2` - Stereo
+  - `6` - 5.1 surround
+  - `8` - 7.1 surround
+</ParamField>
+
+<ParamField path="AudioSampleRate" type="integer" default="48">
+  Audio sample rate in kHz (typically 48)
+</ParamField>
+
+<ParamField path="NormalizeLoudnessMode" type="enum" default="Off">
+  Audio loudness normalization mode:
+  - `Off` - No normalization
+  - `LoudNorm` - EBU R128 loudness normalization
+</ParamField>
+
+<ParamField path="TargetLoudness" type="double" default="-16">
+  Target loudness in LUFS when using LoudNorm mode (typically -16 for broadcast)
+</ParamField>
+
+### Hardware Acceleration
+
+<ParamField path="HardwareAcceleration" type="enum" default="None">
+  Hardware acceleration method:
+  - `None` - Software encoding only
+  - `Qsv` - Intel Quick Sync Video
+  - `Nvenc` - NVIDIA NVENC
+  - `Vaapi` - Video Acceleration API (Intel/AMD on Linux)
+  - `VideoToolbox` - Apple VideoToolbox (macOS)
+  - `Amf` - AMD Advanced Media Framework
+  - `V4l2m2m` - Video4Linux2 Memory-to-Memory
+  - `Rkmpp` - Rockchip Media Process Platform
+</ParamField>
+
+#### VAAPI Settings
+
+These settings apply only when using VAAPI hardware acceleration:
+
+<ParamField path="VaapiDisplay" type="string">
+  VAAPI display device (e.g., `/dev/dri/renderD128`)
+</ParamField>
+
+<ParamField path="VaapiDriver" type="enum">
+  VAAPI driver to use
+</ParamField>
+
+<ParamField path="VaapiDevice" type="string">
+  VAAPI device path
+</ParamField>
+
+#### QSV Settings
+
+<ParamField path="QsvExtraHardwareFrames" type="integer" default="64">
+  Extra hardware frames to allocate for QSV (Intel Quick Sync). Increase if you encounter errors.
+</ParamField>
+
+## Creating a Profile
+
+Profiles are created and managed through the ErsatzTV web interface:
+
+1. Navigate to Settings > FFmpeg Profiles
+2. Click "Add FFmpeg Profile"
+3. Configure the desired settings
+4. Save the profile
+
+## Default Profile
+
+ErsatzTV creates a default profile with these settings:
+
+```json
+{
+  "Name": "Default",
+  "ThreadCount": 0,
+  "Resolution": "1920x1080",
+  "ScalingBehavior": "ScaleAndPad",
+  "PadMode": "Software",
+  "VideoFormat": "H264",
+  "VideoProfile": "high",
+  "VideoPreset": "Unset",
+  "AllowBFrames": false,
+  "VideoBitrate": 2000,
+  "VideoBufferSize": 4000,
+  "BitDepth": "EightBit",
+  "TonemapAlgorithm": "Linear",
+  "AudioFormat": "Aac",
+  "AudioBitrate": 192,
+  "AudioBufferSize": 384,
+  "AudioChannels": 2,
+  "AudioSampleRate": 48,
+  "NormalizeLoudnessMode": "Off",
+  "DeinterlaceVideo": true,
+  "NormalizeFramerate": false,
+  "NormalizeAudio": true,
+  "NormalizeVideo": true,
+  "NormalizeColors": true,
+  "HardwareAcceleration": "None",
+  "QsvExtraHardwareFrames": 64
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Hardware Acceleration">
+    Enable hardware acceleration when available to reduce CPU usage and improve performance. Ensure your system has the necessary drivers and FFmpeg is compiled with hardware acceleration support.
+  </Accordion>
+
+  <Accordion title="Bitrate Selection">
+    Choose bitrates appropriate for your target resolution:
+    - 720p: 1500-2500 Kbps
+    - 1080p: 2000-4000 Kbps
+    - 4K: 8000-15000 Kbps
+  </Accordion>
+
+  <Accordion title="Audio Normalization">
+    Use LoudNorm mode with -16 LUFS for consistent volume across different media sources, especially important for broadcast-style channels.
+  </Accordion>
+
+  <Accordion title="Format Compatibility">
+    H.264 with AAC audio provides the best compatibility across all client devices. Use HEVC or AV1 only if your clients support it.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<Warning>
+  If hardware acceleration fails, ErsatzTV will automatically fall back to software encoding. Check the logs for hardware acceleration errors.
+</Warning>
+
+<Note>
+  The `Copy` option for video and audio formats can only be used when all source media has compatible formats. Mixing different formats will require normalization to be disabled.
+</Note>
